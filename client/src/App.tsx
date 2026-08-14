@@ -6,6 +6,8 @@ type UiState = "idle" | "loading" | "success" | "error";
 
 export default function App() {
   const [state, setState] = useState<UiState>("idle");
+  const [systemOnline, setSystemOnline] = useState(0);
+  const [displayStatus, setDisplayStatus] = useState(0);
   const [categories, setCategories] = useState<Category[]>([]);
   void categories;
 
@@ -14,6 +16,12 @@ export default function App() {
     //   - success: store categories and show Online + the list, or
     //   - error: show Offline + a useful message.
     setState("loading");
+    setDisplayStatus(1);
+    const res = checkSystem();
+    const online = (await res).online;
+
+    setState("success");
+    online ? setSystemOnline(1) : setSystemOnline(0);
   }
 
   return (
@@ -29,6 +37,17 @@ export default function App() {
       >
         {state === "loading" ? "Loading…" : "Check System"}
       </button>
+
+      {displayStatus === 1 && (
+        <h4 className="mt-4">
+          System:{" "}
+          {systemOnline === 1 ? (
+            <span className="text-success">Online</span>
+          ) : (
+            <span className="text-danger">Offline</span>
+          )}
+        </h4>
+      )}
 
       {/* TODO(Issue 4): render loading / success (Online + categories) / error (Offline) states. */}
     </div>

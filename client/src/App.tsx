@@ -1,27 +1,28 @@
 import { useState } from "react";
 import { checkSystem, Category } from "./api.js";
 
-// UI states you must handle for Issue 4: idle, loading, success, error.
 type UiState = "idle" | "loading" | "success" | "error";
 
 export default function App() {
   const [state, setState] = useState<UiState>("idle");
-  const [systemOnline, setSystemOnline] = useState(0);
-  const [displayStatus, setDisplayStatus] = useState(0);
   const [categories, setCategories] = useState<Category[]>([]);
-  void categories;
+  const [errorMessage, setErrorMessage] = useState("");
 
   async function handleCheck() {
-    // TODO(Issue 4): set loading, call checkSystem(), then either
-    //   - success: store categories and show Online + the list, or
-    //   - error: show Offline + a useful message.
     setState("loading");
-    setDisplayStatus(1);
-    const res = checkSystem();
-    const online = (await res).online;
+    setErrorMessage("");
 
-    setState("success");
-    online ? setSystemOnline(1) : setSystemOnline(0);
+    try {
+      const result = await checkSystem();
+      setCategories(result.categories);
+      setState("success");
+    } catch (err) {
+      setCategories([]);
+      setErrorMessage(
+        err instanceof Error ? err.message : "Something went wrong",
+      );
+      setState("error");
+    }
   }
 
   return (
@@ -38,18 +39,42 @@ export default function App() {
         {state === "loading" ? "Loading…" : "Check System"}
       </button>
 
-      {displayStatus === 1 && (
-        <h4 className="mt-4">
-          System:{" "}
-          {systemOnline === 1 ? (
-            <span className="text-success">Online</span>
-          ) : (
-            <span className="text-danger">Offline</span>
-          )}
-        </h4>
+      {state === "loading" && (
+        <p className="mt-4 text-secondary" role="status">
+          Loading categories…
+        </p>
       )}
 
-      {/* TODO(Issue 4): render loading / success (Online + categories) / error (Offline) states. */}
+      {state === "success" && (
+        <>
+          <h4 className="mt-4">
+            System: <span className="text-success">Online</span>
+          </h4>
+
+          {categories.length === 0 ? (
+            <p className="text-secondary">No categories found.</p>
+          ) : (
+            <ul className="list-group mt-3">
+              {categories.map((category) => (
+                <li className="list-group-item" key={category.id}>
+                  {category.name}
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+
+      {state === "error" && (
+        <>
+          <h4 className="mt-4">
+            System: <span className="text-danger">Offline</span>
+          </h4>
+          <div className="alert alert-danger mt-3" role="alert">
+            {errorMessage}
+          </div>
+        </>
+      )}
     </div>
   );
 }

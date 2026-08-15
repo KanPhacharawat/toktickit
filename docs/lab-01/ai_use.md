@@ -1,13 +1,21 @@
-# Lab 1 — AI Use and Reflection  (fill this in)
+# Lab 1 — AI Use and Reflection
 
-**LLM/agent used:** <name>
+**LLM/agent used:** Claude Code and ChatGPT
 
 ## Selected key prompts (6–10)
-| # | Prompt (summarised) | What I did with the result |
-|---|---------------------|----------------------------|
-| 1 |  |  |
-| 2 |  |  |
+
+| #   | Prompt (summarised)                                                                                                                                                                                                                           | How I used the answer with the project                                                                                                                                                                                             |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | <Upload lab 1 worksheet.pdf> Summarize the task and read through the lab instruction and remember that for future use.                                                                                                                        | I read the summary version of a lab instruction so I know everything that I need to do in the lab.                                                                                                                                 |
+| 2   | Now that you know everything about the project quite well, help me write down the README.md for the project so other people can understand this project as good as you.                                                                       | I write the README.md file from it since it know quite well with the project. AI can write down a great md for the project.                                                                                                        |
+| 3   | I just enter the wrong command and I accidentally upgrade the Prisma version. Find the downgrade command and tell me a step-by-step to do it.                                                                                                 | I use the step-by-step instruction that the AI give me and downgrade the Prisma version inside my project back to the one that work with the project.                                                                              |
+| 4   | From Issue #1 acceptance criteria tell me for every criteria how can I test it in the project.                                                                                                                                                | I use the advice from AI to test for the Issue #1 criteria one-by-one                                                                                                                                                              |
+| 5   | Look at this codebase and help me with the issue with this criteria <Issue #3 Acceptance Criteria>.Give me a guide step by step to finish this issue and I don't know about use postgreSQL in a windows development but I know SQL quite well | I use the answer from Claude Code and learn step by step to finish it (Note: I know the Express and React quite well but I haven't use postgreSQL in a project development before so I learn how to use it through Prisma from it) |
+| 6   | Help me right now this repo code is on lab1-staging and I want to merge into main but it got a conflict. Can you help me fix it and make a PR to merge lab1-staging into a main                                                               | I use the solution from it to fix the conflict that I have when I want to merge lab1-staging branch into the main branch.                                                                                                          |
 
 ## Reflection
+
 Two or three sentences: what made your prompts better, and one place you had to
 correct or reject what the agent produced.
+
+I would say that AI can help me a lot for the full stack development such as this project but sometime they don't know everything about the project but I think they know it all. So there can be some mistaken from the agent such as they don't know some requirement and just imagine something that is not match with the real lab requirement. So my opinion is that we can use AI agent to help for the project development but we need to carefully use it such as input the document for them first and let them learn. And other think is about the token usage. For me that use Claude Code subscription I would say that agent consume a lot of tokens so the best way that I use it is by use top model for the planning and architecture and use cheaper model for code.

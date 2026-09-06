@@ -1,0 +1,110 @@
+/* Zen Green design system — ui-spec.md §1. */
+:root {
+  --zen-primary: #006b3c;
+  --zen-secondary: #0b7a46;
+  --zen-pale: #eaf6ef;
+  --zen-background: #f5f7f6;
+  --zen-surface: #ffffff;
+  --zen-text: #1c2b24; /* dark charcoal-green */
+  --zen-muted: #5a6b62;
+  --zen-border: #d3dcd7;
+  --zen-readonly: #eef1ef; /* soft gray-green */
+  --zen-error: #a11024; /* dark red */
+  --zen-warning: #a86a00; /* amber */
+  --zen-success: #006b3c;
+}
+
+body {
+  background-color: var(--zen-background);
+  color: var(--zen-text);
+}
+
+.zen-card {
+  background: var(--zen-surface);
+  border: 1px solid var(--zen-border);
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(28, 43, 36, 0.08);
+}
+
+.zen-title {
+  color: var(--zen-primary);
+  font-weight: 700;
+}
+
+/* The Lab 2 testing-identity notice — BR-04 requires this to be clearly
+   labelled as a testing mechanism, never as real authentication. */
+.zen-testing-banner {
+  background: var(--zen-pale);
+  border: 1px solid var(--zen-primary);
+  border-left-width: 5px;
+  border-radius: 6px;
+  color: var(--zen-text);
+  padding: 0.75rem 1rem;
+}
+
+.zen-btn-primary {
+  background-color: var(--zen-primary);
+  border: 1px solid var(--zen-primary);
+  color: #fff;
+}
+.zen-btn-primary:hover:not(:disabled) {
+  background-color: var(--zen-secondary);
+  border-color: var(--zen-secondary);
+  color: #fff;
+}
+/* Disabled controls must look distinct — ui-spec.md §4. */
+.zen-btn-primary:disabled {
+  background-color: var(--zen-readonly);
+  border-color: var(--zen-border);
+  color: var(--zen-muted);
+  cursor: not-allowed;
+  opacity: 1;
+}
+
+.zen-btn-outline {
+  background-color: transparent;
+  border: 1px solid var(--zen-primary);
+  color: var(--zen-primary);
+}
+.zen-btn-outline:hover:not(:disabled) {
+  background-color: var(--zen-pale);
+  color: var(--zen-primary);
+}
+
+/* Keyboard focus must stay visible everywhere — ui-spec.md §10. */
+.zen-focusable:focus-visible,
+.zen-select:focus-visible,
+.zen-btn-primary:focus-visible,
+.zen-btn-outline:focus-visible {
+  outline: 3px solid var(--zen-secondary);
+  outline-offset: 2px;
+}
+
+.zen-select {
+  background-color: var(--zen-surface);
+  border: 1px solid var(--zen-border);
+  color: var(--zen-text);
+  min-height: 44px; /* touch-friendly on mobile — ui-spec.md §9 */
+}
+.zen-select:focus {
+  border-color: var(--zen-secondary);
+  box-shadow: none;
+}
+
+.zen-error-text {
+  color: var(--zen-error);
+}
+
+.zen-shell-header {
+  background-color: var(--zen-primary);
+  color: #fff;
+}
+
+.zen-requester-chip {
+  background-color: var(--zen-pale);
+  border: 1px solid var(--zen-secondary);
+  border-radius: 999px;
+  color: var(--zen-primary);
+  font-weight: 600;
+  padding: 0.25rem 0.75rem;
+}

@@ -52,6 +52,11 @@ Tests are planned from the approved Acceptance Criteria before implementation is
 | E2E-04   | E2E        | AC-19–21            | Attachment lifecycle           | Upload, view metadata, soft remove, and blocked download work                            | `e2e/lab-02/requester-ticket-flow.spec.ts`      | Pass  |
 | E2E-05   | E2E        | AC-24               | Responsive flow                | Main requester journey succeeds at desktop/tablet/mobile sizes                           | `e2e/lab-02/requester-ticket-flow.spec.ts`      | Pass  |
 | E2E-06   | E2E        | AC-25               | Accessibility smoke test       | Keyboard navigation and visible focus work on core screens                               | `e2e/lab-02/requester-ticket-flow.spec.ts`      | Pass  |
+| E2E-03b  | E2E        | AC-12, AC-22        | Direct cross-requester access  | Another Requester's Ticket and Attachments are refused when requested directly            | `e2e/lab-02/requester-ticket-flow.spec.ts`      | Pass  |
+| VIS-01   | Responsive | AC-24               | Desktop layout and evidence    | No clipping, overlap, or horizontal scrolling at 1280px; screenshots captured             | `e2e/lab-02/responsive-visual.spec.ts`          | Pass  |
+| VIS-02   | Responsive | AC-24               | Tablet layout and evidence     | No clipping, overlap, or horizontal scrolling at 820px; screenshots captured              | `e2e/lab-02/responsive-visual.spec.ts`          | Pass  |
+| VIS-03   | Responsive | AC-24               | Mobile layout and evidence     | No clipping, overlap, or horizontal scrolling at 390px; screenshots captured              | `e2e/lab-02/responsive-visual.spec.ts`          | Pass  |
+| VIS-04   | Responsive | AC-17, AC-24        | Empty-state evidence           | The My Tickets empty state renders correctly and is captured at all three widths          | `e2e/lab-02/responsive-visual.spec.ts`          | Pass  |
 
 ## Acceptance-Criteria Traceability
 
@@ -68,19 +73,19 @@ Tests are planned from the approved Acceptance Criteria before implementation is
 | AC-09               | API-05, UI-05                              |
 | AC-10               | UI-07                                      |
 | AC-11               | API-06, UI-08, E2E-02                      |
-| AC-12               | API-07, UI-10, E2E-03                      |
+| AC-12               | API-07, UI-10, E2E-03, E2E-03b             |
 | AC-13               | API-08, UI-09, E2E-02                      |
 | AC-14               | API-09, UI-09, E2E-02                      |
 | AC-15               | API-10, UI-09, E2E-02                      |
 | AC-16               | API-11, UI-09, E2E-02                      |
-| AC-17               | UI-08, E2E-02                              |
+| AC-17               | UI-08, E2E-02, VIS-04                      |
 | AC-18               | UNIT-04, API-13, UI-11                     |
 | AC-19               | API-12, UI-11, E2E-04                      |
 | AC-20               | API-14, UI-11, E2E-04                      |
 | AC-21               | API-15, UI-11, E2E-04                      |
-| AC-22               | API-16, E2E-03                             |
+| AC-22               | API-16, E2E-03b                            |
 | AC-23               | UI-07, UI-08, UI-10                        |
-| AC-24               | RESP-01, RESP-02, RESP-03, RESP-04, E2E-05 |
+| AC-24               | RESP-01–04, E2E-05, VIS-01–04              |
 | AC-25               | STYLE-01, E2E-06                           |
 
 ## Final Test Status
@@ -91,8 +96,8 @@ All planned tests are implemented and executed. Nothing is skipped, disabled, or
 | ------------------------ | ------------------------ | ------------ |
 | Server unit + API        | `cd server && npm test`  | 128 passed   |
 | Client unit + UI + style | `cd client && npm test`  | 113 passed   |
-| E2E + responsive         | `npx playwright test`    | 10 passed    |
-| **Total**                |                          | **251 passed** |
+| E2E + responsive         | `npx playwright test`    | 15 passed    |
+| **Total**                |                          | **256 passed** |
 
 The UI test paths above use `client/tests/lab-02/`, matching the existing
 `client/tests/lab-01/` convention in this repository.
@@ -103,3 +108,26 @@ migration and seed first:
 ```
 cd server && npx prisma migrate dev && npm run prisma:seed
 ```
+
+## Visual Evidence
+
+`e2e/lab-02/responsive-visual.spec.ts` captures the screenshots required by
+`ui-spec.md` §11 on every run, at desktop (1280px), tablet (820px), and mobile
+(390px):
+
+```
+artifacts/lab-02/screenshots/
+  requester-selection/{desktop,tablet,mobile}.png
+  create-ticket/{desktop,tablet,mobile}.png
+  create-ticket/{desktop,tablet,mobile}-validation.png
+  my-tickets/{desktop,tablet,mobile}.png
+  my-tickets/{desktop,tablet,mobile}-filters.png
+  my-tickets/{desktop,tablet,mobile}-empty.png
+  ticket-detail/{desktop,tablet,mobile}.png
+  ticket-detail/{desktop,tablet,mobile}-removed-attachment.png
+```
+
+The same spec asserts the visual-inspection rules from the handout rather than
+leaving them to the eye: no horizontal page scrolling, no clipped labels,
+buttons, validation messages, or attachment filenames, no overlapping controls,
+and touch-friendly control heights.

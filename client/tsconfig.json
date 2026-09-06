@@ -6,9 +6,12 @@
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
     "strict": true,
+    // Vite does the bundling; `tsc` in `npm run build` only type-checks.
+    // Without this it emits .js files next to the sources.
+    "noEmit": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "types": ["vitest/globals", "@testing-library/jest-dom"]
+    "types": ["vitest/globals", "@testing-library/jest-dom", "node"]
   },
   "include": ["src", "tests"]
 }

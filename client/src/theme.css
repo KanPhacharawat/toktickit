@@ -1,0 +1,367 @@
+/* Zen Green design system — ui-spec.md §1. */
+:root {
+  --zen-primary: #006b3c;
+  --zen-secondary: #0b7a46;
+  --zen-pale: #eaf6ef;
+  --zen-background: #f5f7f6;
+  --zen-surface: #ffffff;
+  --zen-text: #1c2b24; /* dark charcoal-green */
+  --zen-muted: #5a6b62;
+  --zen-border: #d3dcd7;
+  --zen-readonly: #eef1ef; /* soft gray-green */
+  --zen-error: #a11024; /* dark red */
+  --zen-warning: #a86a00; /* amber */
+  --zen-success: #006b3c;
+}
+
+body {
+  background-color: var(--zen-background);
+  color: var(--zen-text);
+}
+
+.zen-card {
+  background: var(--zen-surface);
+  border: 1px solid var(--zen-border);
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(28, 43, 36, 0.08);
+}
+
+.zen-title {
+  color: var(--zen-primary);
+  font-weight: 700;
+}
+
+/* The Lab 2 testing-identity notice — BR-04 requires this to be clearly
+   labelled as a testing mechanism, never as real authentication. */
+.zen-testing-banner {
+  background: var(--zen-pale);
+  border: 1px solid var(--zen-primary);
+  border-left-width: 5px;
+  border-radius: 6px;
+  color: var(--zen-text);
+  padding: 0.75rem 1rem;
+}
+
+.zen-btn-primary {
+  background-color: var(--zen-primary);
+  border: 1px solid var(--zen-primary);
+  color: #fff;
+}
+.zen-btn-primary:hover:not(:disabled) {
+  background-color: var(--zen-secondary);
+  border-color: var(--zen-secondary);
+  color: #fff;
+}
+/* Disabled controls must look distinct — ui-spec.md §4. */
+.zen-btn-primary:disabled {
+  background-color: var(--zen-readonly);
+  border-color: var(--zen-border);
+  color: var(--zen-muted);
+  cursor: not-allowed;
+  opacity: 1;
+}
+
+.zen-btn-outline {
+  background-color: transparent;
+  border: 1px solid var(--zen-primary);
+  color: var(--zen-primary);
+}
+.zen-btn-outline:hover:not(:disabled) {
+  background-color: var(--zen-pale);
+  color: var(--zen-primary);
+}
+
+/* Keyboard focus must stay visible everywhere — ui-spec.md §10. */
+.zen-focusable:focus-visible,
+.zen-select:focus-visible,
+.zen-btn-primary:focus-visible,
+.zen-btn-outline:focus-visible {
+  outline: 3px solid var(--zen-secondary);
+  outline-offset: 2px;
+}
+
+.zen-select {
+  background-color: var(--zen-surface);
+  border: 1px solid var(--zen-border);
+  color: var(--zen-text);
+  min-height: 44px; /* touch-friendly on mobile — ui-spec.md §9 */
+}
+.zen-select:focus {
+  border-color: var(--zen-secondary);
+  box-shadow: none;
+}
+
+.zen-error-text {
+  color: var(--zen-error);
+}
+
+.zen-shell-header {
+  background-color: var(--zen-primary);
+  color: #fff;
+}
+
+.zen-requester-chip {
+  background-color: var(--zen-pale);
+  border: 1px solid var(--zen-secondary);
+  border-radius: 999px;
+  color: var(--zen-primary);
+  font-weight: 600;
+  padding: 0.25rem 0.75rem;
+}
+
+/* --- Create Ticket ------------------------------------------------------ */
+
+/* Required marker: red asterisk, always paired with visually-hidden text so
+   "required" is never signalled by colour alone (ui-spec.md §10). */
+.zen-required {
+  color: var(--zen-error);
+  font-weight: 700;
+}
+
+.zen-input {
+  background-color: var(--zen-surface);
+  border: 1px solid var(--zen-border);
+  color: var(--zen-text);
+  min-height: 44px;
+}
+.zen-input:focus {
+  border-color: var(--zen-secondary);
+  box-shadow: none;
+}
+.zen-input:focus-visible {
+  outline: 3px solid var(--zen-secondary);
+  outline-offset: 2px;
+}
+
+/* Description is taller than a normal input (ui-spec.md §4). */
+.zen-textarea {
+  min-height: 140px;
+}
+
+/* System-generated values read as read-only, visually distinct from the
+   white editable fields (ui-spec.md §1, STYLE-03). */
+.zen-readonly-field {
+  background-color: var(--zen-readonly);
+  border: 1px solid var(--zen-border);
+  color: var(--zen-muted);
+  cursor: default;
+  min-height: 44px;
+}
+
+/* Invalid controls carry a dark-red border alongside their message. */
+.zen-invalid,
+.zen-invalid:focus {
+  border-color: var(--zen-error);
+  border-width: 2px;
+}
+
+.zen-error-banner {
+  background-color: #fdf2f4;
+  border: 1px solid var(--zen-error);
+  color: var(--zen-error);
+}
+
+.zen-warning-banner {
+  background-color: #fdf6e8;
+  border: 1px solid var(--zen-warning);
+  color: var(--zen-warning);
+}
+
+/* Success uses text as well as colour (ui-spec.md §10). */
+.zen-success-banner {
+  background-color: var(--zen-pale);
+  border: 1px solid var(--zen-primary);
+  border-left-width: 5px;
+  border-radius: 6px;
+  color: var(--zen-primary);
+  padding: 0.75rem 1rem;
+}
+
+.zen-ticket-number {
+  color: var(--zen-primary);
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  word-break: break-all;
+}
+
+/* --- Shell navigation --------------------------------------------------- */
+
+.zen-nav-link {
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: rgba(255, 255, 255, 0.85);
+  font-weight: 600;
+  padding: 0.25rem 0.25rem 0.35rem;
+}
+.zen-nav-link:hover:not(:disabled) {
+  color: #fff;
+}
+.zen-nav-link[aria-current="page"] {
+  border-bottom-color: #fff;
+  color: #fff;
+}
+.zen-nav-link:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+}
+
+/* --- My Tickets --------------------------------------------------------- */
+
+.zen-table {
+  color: var(--zen-text);
+  margin-bottom: 0;
+  vertical-align: middle;
+}
+.zen-table thead th {
+  background-color: var(--zen-pale);
+  border-bottom: 2px solid var(--zen-border);
+  color: var(--zen-primary);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.zen-table tbody tr + tr td {
+  border-top: 1px solid var(--zen-border);
+}
+
+/* Badges pair colour with their own text, never colour alone
+   (ui-spec.md §10). */
+.zen-badge {
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  display: inline-block;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  padding: 0.15rem 0.6rem;
+  white-space: nowrap;
+}
+
+.zen-status {
+  background-color: var(--zen-pale);
+  color: var(--zen-primary);
+}
+
+.zen-priority-low {
+  background-color: #eef1ef;
+  color: #4a5a52;
+}
+.zen-priority-medium {
+  background-color: var(--zen-pale);
+  color: var(--zen-secondary);
+}
+.zen-priority-high {
+  background-color: #fdf6e8;
+  color: var(--zen-warning);
+}
+.zen-priority-urgent {
+  background-color: #fdf2f4;
+  color: var(--zen-error);
+}
+
+/* The table scrolls inside its own card rather than pushing the page
+   sideways on mobile (ui-spec.md §9). */
+.table-responsive.zen-card {
+  overflow-x: auto;
+}
+
+/* --- Collapsible filter panel ------------------------------------------- */
+
+/* Bootstrap sets `.row { display: flex }`, which beats the `hidden`
+   attribute's UA `display: none`. Restore it so hidden really is hidden. */
+[hidden] {
+  display: none !important;
+}
+
+.zen-disclosure {
+  display: inline-block;
+  font-weight: 700;
+  margin-right: 0.4rem;
+  min-width: 0.7em;
+  text-align: center;
+}
+
+/* Count of applied filters, so a collapsed panel never hides the fact that
+   the list is being narrowed. Paired with visually-hidden text, never colour
+   alone (ui-spec.md §10). */
+.zen-filter-count {
+  background-color: var(--zen-primary);
+  border-radius: 999px;
+  color: #fff;
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.4;
+  margin-left: 0.45rem;
+  min-width: 1.4em;
+  padding: 0 0.4em;
+  text-align: center;
+}
+
+/* --- Ticket Detail ------------------------------------------------------ */
+
+/* Every value on Ticket Detail is system-owned, so it uses the read-only
+   treatment: visually distinct from an editable field (ui-spec.md §1). */
+.zen-readonly-value {
+  background-color: var(--zen-readonly);
+  border: 1px solid var(--zen-border);
+  border-radius: 6px;
+  color: var(--zen-text);
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  word-break: break-word;
+}
+
+/* Description keeps the author's line breaks. */
+.zen-readonly-block {
+  min-height: 120px;
+  white-space: pre-wrap;
+}
+
+/* A ticket number that opens its detail: reads as a link, behaves as a
+   button, and keeps a visible focus ring. */
+.zen-link-button {
+  background: none;
+  border: none;
+  color: var(--zen-secondary);
+  font-weight: 700;
+  /* Opening a ticket is the list's primary action, so the target stays
+     comfortably tappable rather than shrinking to the text height
+     (ui-spec.md §9). */
+  min-height: 32px;
+  padding: 0.25rem 0;
+  text-align: left;
+  text-decoration: underline;
+}
+.zen-link-button:hover {
+  color: var(--zen-primary);
+}
+.zen-link-button:focus-visible {
+  outline: 3px solid var(--zen-secondary);
+  outline-offset: 2px;
+}
+
+/* A removed attachment stays readable but is clearly marked; the state is
+   carried by the badge text, not by the shading alone (ui-spec.md §10). */
+.zen-attachment-removed {
+  background-color: var(--zen-readonly);
+}
+.zen-removed-badge {
+  background-color: #fdf2f4;
+  color: var(--zen-error);
+}
+
+.zen-removal-form {
+  background-color: var(--zen-surface);
+  border: 1px solid var(--zen-border);
+  border-radius: 6px;
+  padding: 0.75rem;
+}
+
+/* Touch-friendly floor for the compact buttons used in the shell, the
+   attachment rows, and pagination. Bootstrap's .btn-sm renders at 31px,
+   which is below a comfortable tap target on tablet and mobile
+   (ui-spec.md §9: "Buttons remain touch-friendly"). */
+.btn-sm {
+  min-height: 32px;
+}

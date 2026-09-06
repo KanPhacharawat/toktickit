@@ -142,7 +142,7 @@ afterAll(async () => {
 // ---------------------------------------------------------------------------
 // Query parsing — unit coverage (BR-25, BR-26)
 // ---------------------------------------------------------------------------
-describe("ticket list query parsing", () => {
+describe("API-11 — ticket list query validation (BR-25, BR-26)", () => {
   it("applies the documented defaults (BR-24)", () => {
     const { query } = parseTicketListQuery({});
     expect(query).toMatchObject({
@@ -201,7 +201,7 @@ describe("ticket list query parsing", () => {
 // ---------------------------------------------------------------------------
 // API-06 — ownership (AC-11)
 // ---------------------------------------------------------------------------
-describe("GET /api/requesters/:requesterId/tickets — ownership", () => {
+describe("API-06 — requester ownership list (AC-11)", () => {
   it("returns only tickets owned by the requester", async () => {
     const res = await request(app).get(listUrl(ownerId)).query({ pageSize: 50 });
 
@@ -255,7 +255,7 @@ describe("GET /api/requesters/:requesterId/tickets — ownership", () => {
 // ---------------------------------------------------------------------------
 // API-08 — search (AC-13)
 // ---------------------------------------------------------------------------
-describe("GET /api/requesters/:requesterId/tickets — search", () => {
+describe("API-08 — ticket search (AC-13)", () => {
   it("matches the ticket summary", async () => {
     const res = await request(app).get(listUrl(ownerId)).query({ search: "Printer" });
 
@@ -299,7 +299,7 @@ describe("GET /api/requesters/:requesterId/tickets — search", () => {
 // ---------------------------------------------------------------------------
 // API-09 — filters (AC-14)
 // ---------------------------------------------------------------------------
-describe("GET /api/requesters/:requesterId/tickets — filters", () => {
+describe("API-09 — ticket filters (AC-14)", () => {
   it("filters by requested priority", async () => {
     const res = await request(app).get(listUrl(ownerId)).query({ requestedPriority: "LOW" });
 
@@ -353,7 +353,7 @@ describe("GET /api/requesters/:requesterId/tickets — filters", () => {
 // ---------------------------------------------------------------------------
 // API-10 — sorting (AC-15)
 // ---------------------------------------------------------------------------
-describe("GET /api/requesters/:requesterId/tickets — sorting", () => {
+describe("API-10 — ticket sorting (AC-15)", () => {
   it("defaults to last updated descending (BR-24)", async () => {
     const res = await request(app).get(listUrl(ownerId)).query({ pageSize: 50 });
 
@@ -431,7 +431,7 @@ describe("GET /api/requesters/:requesterId/tickets — sorting", () => {
 // ---------------------------------------------------------------------------
 // API-11 — pagination (AC-16)
 // ---------------------------------------------------------------------------
-describe("GET /api/requesters/:requesterId/tickets — pagination", () => {
+describe("API-11 — pagination (AC-16)", () => {
   it("returns accurate pagination metadata", async () => {
     const res = await request(app).get(listUrl(ownerId)).query({ pageSize: 10 });
 

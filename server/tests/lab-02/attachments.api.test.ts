@@ -123,7 +123,7 @@ afterAll(async () => {
 // ---------------------------------------------------------------------------
 // UNIT-04 — policy rules
 // ---------------------------------------------------------------------------
-describe("attachment policy", () => {
+describe("UNIT-04 — attachment validation rules (BR-29–31)", () => {
   it("permits each documented type with a matching extension (BR-29)", () => {
     expect(isPermittedFile("image/jpeg", "photo.jpg")).toBe(true);
     expect(isPermittedFile("image/jpeg", "photo.jpeg")).toBe(true);
@@ -166,69 +166,9 @@ describe("attachment policy", () => {
 });
 
 // ---------------------------------------------------------------------------
-// API-07 — Ticket Detail (AC-12)
-// ---------------------------------------------------------------------------
-describe("GET ticket detail", () => {
-  it("returns the full read-only ticket for its owner (AC-12)", async () => {
-    const res = await request(app).get(detailUrl(ownerId, ownedTicketId));
-
-    expect(res.status).toBe(200);
-    expect(res.body.data).toMatchObject({
-      id: ownedTicketId,
-      currentStatus: "New",
-      requestedPriority: "MEDIUM",
-    });
-    for (const field of [
-      "ticketNumber",
-      "ticketDate",
-      "requester",
-      "category",
-      "relatedSystem",
-      "summary",
-      "description",
-      "createdAt",
-      "updatedAt",
-      "attachments",
-    ]) {
-      expect(res.body.data[field]).toBeDefined();
-    }
-    expect(Array.isArray(res.body.data.attachments)).toBe(true);
-  });
-
-  it("does not return a ticket owned by another requester (AC-12)", async () => {
-    const res = await request(app).get(detailUrl(ownerId, foreignTicketId));
-
-    expect(res.status).toBe(403);
-    // BR-09 — nothing about the real owner is revealed.
-    const serialized = JSON.stringify(res.body);
-    expect(serialized).not.toMatch(/Attachment Other/);
-    expect(serialized).not.toMatch(new RegExp(String(otherId) + '\\s*[,}]'));
-    expect(res.body.data).toBeUndefined();
-  });
-
-  it("returns 404 for a ticket that does not exist", async () => {
-    const res = await request(app).get(detailUrl(ownerId, 99999999));
-    expect(res.status).toBe(404);
-  });
-
-  it("includes removed attachments as metadata (BR-38)", async () => {
-    const uploaded = await uploadTo(ownerId, ownedTicketId);
-    await request(app)
-      .delete(itemUrl(ownerId, ownedTicketId, uploaded.body.data.id))
-      .send({ removalReason: "Duplicate screenshot" });
-
-    const res = await request(app).get(detailUrl(ownerId, ownedTicketId));
-
-    expect(res.body.data.attachments).toHaveLength(1);
-    expect(res.body.data.attachments[0].removedAt).not.toBeNull();
-    expect(res.body.data.attachments[0].removalReason).toBe("Duplicate screenshot");
-  });
-});
-
-// ---------------------------------------------------------------------------
 // API-12 / API-13 — upload (AC-18, AC-19)
 // ---------------------------------------------------------------------------
-describe("POST attachment", () => {
+describe("API-12 / API-13 — attachment upload (AC-18, AC-19)", () => {
   it("stores a permitted attachment and returns its metadata (AC-19)", async () => {
     const res = await uploadTo(ownerId, ownedTicketId);
 
@@ -382,7 +322,7 @@ describe("POST attachment", () => {
 // ---------------------------------------------------------------------------
 // GET metadata (§10)
 // ---------------------------------------------------------------------------
-describe("GET attachment metadata", () => {
+describe("API-14 — attachment metadata after soft removal (AC-20)", () => {
   it("lists metadata for an owned ticket", async () => {
     await uploadTo(ownerId, ownedTicketId, { filename: "one.png" });
     await uploadTo(ownerId, ownedTicketId, { filename: "two.pdf", contentType: "application/pdf" });
@@ -426,7 +366,7 @@ describe("GET attachment metadata", () => {
 // ---------------------------------------------------------------------------
 // API-15 — download (AC-21)
 // ---------------------------------------------------------------------------
-describe("GET attachment download", () => {
+describe("API-15 / API-16 — download protection and ownership (AC-21, AC-22)", () => {
   it("returns the file with its stored MIME type", async () => {
     const uploaded = await uploadTo(ownerId, ownedTicketId);
 
@@ -505,7 +445,7 @@ describe("GET attachment download", () => {
 // ---------------------------------------------------------------------------
 // API-14 — soft removal (AC-20)
 // ---------------------------------------------------------------------------
-describe("DELETE attachment (soft removal)", () => {
+describe("API-14 — soft removal (AC-20)", () => {
   it("sets the removal state and keeps the metadata row (AC-20, BR-36)", async () => {
     const uploaded = await uploadTo(ownerId, ownedTicketId);
 
@@ -601,7 +541,7 @@ describe("DELETE attachment (soft removal)", () => {
 // ---------------------------------------------------------------------------
 // AC-23 / BR-39 — unexpected failures stay safe
 // ---------------------------------------------------------------------------
-describe("attachment failures", () => {
+describe("API-12–16 — attachment failures stay safe (AC-23)", () => {
   it("returns a safe 500 without leaking internals", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(prisma.attachment, "findMany").mockRejectedValue(

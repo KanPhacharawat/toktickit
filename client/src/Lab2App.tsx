@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import AppShell, { type AppView } from "./AppShell.js";
 import CreateTicket from "./CreateTicket.js";
 import MyTickets from "./MyTickets.js";
@@ -16,6 +16,14 @@ function RequesterGate() {
   const { selectedRequester, requesterContextKey } = useRequester();
   const [view, setView] = useState<AppView>("tickets");
   const [openTicketId, setOpenTicketId] = useState<number | null>(null);
+
+  // BR-07 — a requester change resets the view. Without this the new
+  // requester lands on whatever screen the previous one was using, which for
+  // Create Ticket or a Ticket Detail is the wrong identity's context.
+  useEffect(() => {
+    setView("tickets");
+    setOpenTicketId(null);
+  }, [requesterContextKey]);
 
   if (!selectedRequester) {
     return (

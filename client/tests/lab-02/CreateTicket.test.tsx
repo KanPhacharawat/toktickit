@@ -101,7 +101,7 @@ function makeFile(name: string, type: string, size: number): File {
   return file;
 }
 
-describe("Create Ticket", () => {
+describe("UI-04 / UI-05 / UI-06 / UI-07 — Create Ticket (AC-05, AC-07, AC-09, AC-10)", () => {
   beforeEach(() => {
     window.localStorage.clear();
     mockReferenceData();
@@ -549,7 +549,7 @@ describe("Create Ticket", () => {
 // ---------------------------------------------------------------------------
 // Attachment rules — unit coverage of the boundaries (BR-29, BR-30, BR-31)
 // ---------------------------------------------------------------------------
-describe("attachment selection rules", () => {
+describe("UNIT-04 — attachment selection rules (BR-29–31)", () => {
   it("accepts each permitted type", () => {
     const files = [
       makeFile("a.jpg", "image/jpeg", 10),

@@ -6,7 +6,7 @@ import { getPrisma } from "../../src/prisma.js";
 // API-01 — integration test: needs the database migrated and seeded first.
 //   npx prisma migrate dev
 //   npm run prisma:seed
-describe("GET /api/development-requesters", () => {
+describe("API-01 — active requesters endpoint (AC-01, AC-03)", () => {
   afterAll(async () => {
     await getPrisma().$disconnect();
   });

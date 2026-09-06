@@ -1,7 +1,7 @@
 import { useState } from "react";
 import AppShell, { type AppView } from "./AppShell.js";
 import CreateTicket from "./CreateTicket.js";
-import RequesterHome from "./RequesterHome.js";
+import MyTickets from "./MyTickets.js";
 import RequesterSelection from "./RequesterSelection.js";
 import { RequesterProvider, useRequester } from "./RequesterContext.js";
 import "./theme.css";
@@ -13,7 +13,7 @@ import "./theme.css";
  */
 function RequesterGate() {
   const { selectedRequester, requesterContextKey } = useRequester();
-  const [view, setView] = useState<AppView>("home");
+  const [view, setView] = useState<AppView>("tickets");
 
   if (!selectedRequester) {
     return (
@@ -29,9 +29,9 @@ function RequesterGate() {
           and forces a reload (BR-07, AC-04). */}
       <div key={requesterContextKey}>
         {view === "create" ? (
-          <CreateTicket onDone={() => setView("home")} />
+          <CreateTicket onDone={() => setView("tickets")} />
         ) : (
-          <RequesterHome onCreateTicket={() => setView("create")} />
+          <MyTickets onCreateTicket={() => setView("create")} />
         )}
       </div>
     </AppShell>

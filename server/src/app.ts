@@ -1,6 +1,7 @@
 import express, { Request, Response } from "express";
 import cors from "cors";
 import { getPrisma } from "./prisma.js";
+import { ticketsRouter } from "./tickets.js";
 // getPrisma() is your lazy database handle. Call it INSIDE a route when you
 // need the DB (Issue 4). It is intentionally unused until then.
 
@@ -35,6 +36,8 @@ app.get("/api/health", (_req: Request, res: Response) => {
 app.get("/api/categories", async (_req: Request, res: Response) => {
   try {
     const categories = await getPrisma().category.findMany({
+      // FR-30 — only active Categories are selectable on Create Ticket.
+      where: { isActive: true, deletedAt: null },
       select: { id: true, name: true },
       orderBy: { id: "asc" },
     });
@@ -74,5 +77,8 @@ app.get("/api/development-requesters", async (_req: Request, res: Response) => {
     });
   }
 });
+
+// Lab 2 — Create Ticket and its reference data.
+app.use(ticketsRouter);
 
 export default app;

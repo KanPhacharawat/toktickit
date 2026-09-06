@@ -1,4 +1,6 @@
-import AppShell from "./AppShell.js";
+import { useState } from "react";
+import AppShell, { type AppView } from "./AppShell.js";
+import CreateTicket from "./CreateTicket.js";
 import RequesterHome from "./RequesterHome.js";
 import RequesterSelection from "./RequesterSelection.js";
 import { RequesterProvider, useRequester } from "./RequesterContext.js";
@@ -11,6 +13,7 @@ import "./theme.css";
  */
 function RequesterGate() {
   const { selectedRequester, requesterContextKey } = useRequester();
+  const [view, setView] = useState<AppView>("home");
 
   if (!selectedRequester) {
     return (
@@ -21,11 +24,15 @@ function RequesterGate() {
   }
 
   return (
-    <AppShell>
+    <AppShell view={view} onNavigate={setView}>
       {/* Remounting on context change discards the previous Requester's data
           and forces a reload (BR-07, AC-04). */}
       <div key={requesterContextKey}>
-        <RequesterHome />
+        {view === "create" ? (
+          <CreateTicket onDone={() => setView("home")} />
+        ) : (
+          <RequesterHome onCreateTicket={() => setView("create")} />
+        )}
       </div>
     </AppShell>
   );

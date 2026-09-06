@@ -9,7 +9,11 @@ import { useRequester } from "./RequesterContext.js";
  * Requester remounts it and any requester-specific data it holds is reloaded
  * (BR-07, AC-04).
  */
-export default function RequesterHome() {
+export default function RequesterHome({
+  onCreateTicket,
+}: {
+  onCreateTicket?: () => void;
+}) {
   const { selectedRequester } = useRequester();
   if (!selectedRequester) return null;
 
@@ -41,9 +45,19 @@ export default function RequesterHome() {
         </dl>
       </div>
 
+      {onCreateTicket && (
+        <button
+          type="button"
+          className="btn zen-btn-primary mt-3"
+          onClick={onCreateTicket}
+        >
+          Create Ticket
+        </button>
+      )}
+
       <p className="text-secondary small mt-3 mb-0">
-        Create Ticket and My Tickets are delivered in the following issues.
-        Requester-specific screens will read this context.
+        My Tickets is delivered in a following issue. Requester-specific
+        screens read this context.
       </p>
     </main>
   );

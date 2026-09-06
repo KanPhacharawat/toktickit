@@ -95,7 +95,7 @@ afterAll(async () => {
 // ---------------------------------------------------------------------------
 // UNIT-01 — Ticket Number generation
 // ---------------------------------------------------------------------------
-describe("ticket number generation", () => {
+describe("UNIT-01 — ticket number generation (BR-01, AC-05)", () => {
   it("formats numbers as TT-YYYYMMDD-NNNN", () => {
     expect(formatTicketNumber(new Date(2026, 8, 5), 1)).toBe(
       "TT-20260905-0001",
@@ -120,7 +120,7 @@ describe("ticket number generation", () => {
 // ---------------------------------------------------------------------------
 // UNIT-02 / UNIT-03 — validation unit coverage
 // ---------------------------------------------------------------------------
-describe("create ticket validation", () => {
+describe("UNIT-02 / UNIT-03 — summary and description validation (BR-11, BR-12, AC-07)", () => {
   const base = {
     requesterId: 1,
     categoryId: 1,
@@ -207,7 +207,7 @@ describe("create ticket validation", () => {
 // ---------------------------------------------------------------------------
 // API-02 / API-03 — successful creation
 // ---------------------------------------------------------------------------
-describe("POST /api/tickets — success", () => {
+describe("API-02 / API-03 — valid ticket creation and backend defaults (AC-05, AC-06)", () => {
   it("returns 201 and saves exactly one ticket (AC-05)", async () => {
     const before = await prisma.ticket.count();
     const res = await request(app).post("/api/tickets").send(uniqueBody());
@@ -315,7 +315,7 @@ describe("POST /api/tickets — success", () => {
 // ---------------------------------------------------------------------------
 // API-04 — validation failures (AC-08)
 // ---------------------------------------------------------------------------
-describe("POST /api/tickets — validation", () => {
+describe("API-04 — invalid ticket request (AC-08)", () => {
   async function expectRejected(
     body: Record<string, unknown>,
     field: string,
@@ -411,7 +411,7 @@ describe("POST /api/tickets — validation", () => {
 // ---------------------------------------------------------------------------
 // API-05 — duplicate submission (AC-09, BR-18)
 // ---------------------------------------------------------------------------
-describe("POST /api/tickets — duplicate submission", () => {
+describe("API-05 — duplicate submission (AC-09)", () => {
   it("does not create a second ticket for a repeated identical submission", async () => {
     const body = uniqueBody();
 
@@ -472,7 +472,7 @@ describe("POST /api/tickets — duplicate submission", () => {
 // ---------------------------------------------------------------------------
 // AC-23 / BR-39 — unexpected errors stay safe
 // ---------------------------------------------------------------------------
-describe("POST /api/tickets — unexpected failure", () => {
+describe("API-02 — unexpected failure stays safe (AC-23)", () => {
   it("returns a safe 500 without leaking internals", async () => {
     // Silence the deliberate console.error this test provokes.
     vi.spyOn(console, "error").mockImplementation(() => {});

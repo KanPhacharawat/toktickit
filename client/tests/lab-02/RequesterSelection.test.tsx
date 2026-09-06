@@ -57,7 +57,7 @@ async function chooseRequester(
   await user.click(screen.getByRole("button", { name: /continue/i }));
 }
 
-describe("Requester Selection", () => {
+describe("UI-01 / UI-02 / UI-03 — Requester selection (AC-01, AC-03, AC-04)", () => {
   beforeEach(() => {
     window.localStorage.clear();
   });

@@ -94,7 +94,7 @@ function ticketRows() {
   return within(screen.getByTestId("ticket-rows")).getAllByRole("row");
 }
 
-describe("My Tickets", () => {
+describe("UI-08 / UI-09 — My Tickets states and controls (AC-11, AC-13–17)", () => {
   beforeEach(() => {
     window.localStorage.clear();
     mockShell();
@@ -538,6 +538,42 @@ describe("My Tickets", () => {
 
     await waitFor(() => expect(lastCall()[0]).toBe(22));
     expect(spy.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("returns to My Tickets when the requester changes from another screen (BR-07)", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "fetchMyTickets").mockResolvedValue(listResponse());
+    vi.spyOn(api, "fetchRelatedSystems").mockResolvedValue([
+      { id: 21, name: "Test System One" },
+    ]);
+
+    await openMyTickets(user);
+
+    // Move to Create Ticket, then switch requester from there.
+    await user.click(
+      within(screen.getByRole("navigation", { name: /main/i })).getByRole(
+        "button",
+        { name: /create ticket/i },
+      ),
+    );
+    await screen.findByRole("form", { name: /create ticket/i });
+
+    await user.click(screen.getByRole("button", { name: /change requester/i }));
+    await user.selectOptions(
+      await screen.findByLabelText(/development requester/i),
+      screen.getByRole("option", { name: /Beta Requester/ }),
+    );
+    await user.click(screen.getByRole("button", { name: /continue/i }));
+
+    // The new requester lands on their own ticket list, not the previous
+    // requester's Create Ticket form.
+    expect(
+      await screen.findByRole("heading", { name: /my tickets/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("form", { name: /create ticket/i }),
+    ).not.toBeInTheDocument();
+    await waitFor(() => expect(lastCall()[0]).toBe(22));
   });
 
   it("discards the previous requester's filters when the requester changes", async () => {

@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { useRequester } from "./RequesterContext.js";
 
 /** The requester-facing screens reachable from the shell nav. */
-export type AppView = "home" | "create";
+export type AppView = "tickets" | "create";
 
 /**
  * Application shell — ui-spec.md §2.
@@ -37,8 +37,8 @@ export default function AppShell({
               <button
                 type="button"
                 className="zen-nav-link"
-                aria-current={view === "home" ? "page" : undefined}
-                onClick={() => onNavigate!("home")}
+                aria-current={view === "tickets" ? "page" : undefined}
+                onClick={() => onNavigate!("tickets")}
               >
                 My Tickets
               </button>

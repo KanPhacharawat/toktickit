@@ -22,7 +22,27 @@ const REQUESTERS: api.DevelopmentRequester[] = [
 ];
 
 function mockRequesters(data = REQUESTERS) {
+  // My Tickets is the landing screen once a requester is chosen, so its data
+  // sources are stubbed here to keep this suite focused on selection.
+  vi.spyOn(api, "fetchCategories").mockResolvedValue([]);
+  vi.spyOn(api, "fetchMyTickets").mockResolvedValue({
+    data: [],
+    meta: { page: 1, pageSize: 10, totalItems: 0, totalPages: 0 },
+  });
   return vi.spyOn(api, "fetchActiveRequesters").mockResolvedValue(data);
+}
+
+/**
+ * The requester whose tickets were last requested. This is what "the requester
+ * context" means now that My Tickets is the landing screen: the id the list
+ * was loaded for.
+ */
+async function expectTicketsLoadedFor(requesterId: number) {
+  await waitFor(() => {
+    const spy = vi.mocked(api.fetchMyTickets);
+    expect(spy).toHaveBeenCalled();
+    expect(spy.mock.calls[spy.mock.calls.length - 1][0]).toBe(requesterId);
+  });
 }
 
 /** Selects a requester through the dropdown and presses Continue. */
@@ -164,8 +184,12 @@ describe("Requester Selection", () => {
     render(<Lab2App />);
 
     await screen.findByLabelText(/development requester/i);
-    expect(screen.queryByText(/requester context/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: /my tickets/i }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByTestId("current-requester")).not.toBeInTheDocument();
+    // No requester-scoped data is fetched before a requester exists.
+    expect(api.fetchMyTickets).not.toHaveBeenCalled();
   });
 
   it("keeps Continue disabled until a requester is chosen", async () => {
@@ -196,7 +220,7 @@ describe("Requester Selection", () => {
     expect(await screen.findByTestId("current-requester")).toHaveTextContent(
       "Alpha Requester",
     );
-    expect(screen.getByTestId("context-id")).toHaveTextContent("11");
+    await expectTicketsLoadedFor(11);
   });
 
   // UI-03 / AC-04 — change requester, and the context reloads
@@ -206,22 +230,25 @@ describe("Requester Selection", () => {
     render(<Lab2App />);
 
     await chooseRequester(user, /Alpha Requester/);
-    expect(await screen.findByTestId("context-id")).toHaveTextContent("11");
+    await expectTicketsLoadedFor(11);
 
     await user.click(screen.getByRole("button", { name: /change requester/i }));
 
-    // Back to the selector; the previous requester's context is gone.
+    // Back to the selector; the previous requester's screens are gone.
     expect(
       await screen.findByLabelText(/development requester/i),
     ).toBeInTheDocument();
-    expect(screen.queryByTestId("context-id")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: /my tickets/i }),
+    ).not.toBeInTheDocument();
 
     await chooseRequester(user, /Beta Requester/);
 
     expect(await screen.findByTestId("current-requester")).toHaveTextContent(
       "Beta Requester",
     );
-    expect(screen.getByTestId("context-id")).toHaveTextContent("22");
+    // The list reloads for the new requester.
+    await expectTicketsLoadedFor(22);
   });
 
   it("remembers the selected requester across a reload", async () => {
@@ -230,11 +257,16 @@ describe("Requester Selection", () => {
 
     const first = render(<Lab2App />);
     await chooseRequester(user, /Beta Requester/);
-    expect(await screen.findByTestId("context-id")).toHaveTextContent("22");
+    expect(await screen.findByTestId("current-requester")).toHaveTextContent(
+      "Beta Requester",
+    );
     first.unmount();
 
     render(<Lab2App />);
-    expect(await screen.findByTestId("context-id")).toHaveTextContent("22");
+    expect(await screen.findByTestId("current-requester")).toHaveTextContent(
+      "Beta Requester",
+    );
+    await expectTicketsLoadedFor(22);
   });
 
   it("falls back to the selector when the stored requester is no longer active", async () => {

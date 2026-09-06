@@ -206,3 +206,94 @@ body {
   outline: 3px solid #fff;
   outline-offset: 2px;
 }
+
+/* --- My Tickets --------------------------------------------------------- */
+
+.zen-table {
+  color: var(--zen-text);
+  margin-bottom: 0;
+  vertical-align: middle;
+}
+.zen-table thead th {
+  background-color: var(--zen-pale);
+  border-bottom: 2px solid var(--zen-border);
+  color: var(--zen-primary);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.zen-table tbody tr + tr td {
+  border-top: 1px solid var(--zen-border);
+}
+
+/* Badges pair colour with their own text, never colour alone
+   (ui-spec.md §10). */
+.zen-badge {
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  display: inline-block;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  padding: 0.15rem 0.6rem;
+  white-space: nowrap;
+}
+
+.zen-status {
+  background-color: var(--zen-pale);
+  color: var(--zen-primary);
+}
+
+.zen-priority-low {
+  background-color: #eef1ef;
+  color: #4a5a52;
+}
+.zen-priority-medium {
+  background-color: var(--zen-pale);
+  color: var(--zen-secondary);
+}
+.zen-priority-high {
+  background-color: #fdf6e8;
+  color: var(--zen-warning);
+}
+.zen-priority-urgent {
+  background-color: #fdf2f4;
+  color: var(--zen-error);
+}
+
+/* The table scrolls inside its own card rather than pushing the page
+   sideways on mobile (ui-spec.md §9). */
+.table-responsive.zen-card {
+  overflow-x: auto;
+}
+
+/* --- Collapsible filter panel ------------------------------------------- */
+
+/* Bootstrap sets `.row { display: flex }`, which beats the `hidden`
+   attribute's UA `display: none`. Restore it so hidden really is hidden. */
+[hidden] {
+  display: none !important;
+}
+
+.zen-disclosure {
+  display: inline-block;
+  font-weight: 700;
+  margin-right: 0.4rem;
+  min-width: 0.7em;
+  text-align: center;
+}
+
+/* Count of applied filters, so a collapsed panel never hides the fact that
+   the list is being narrowed. Paired with visually-hidden text, never colour
+   alone (ui-spec.md §10). */
+.zen-filter-count {
+  background-color: var(--zen-primary);
+  border-radius: 999px;
+  color: #fff;
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.4;
+  margin-left: 0.45rem;
+  min-width: 1.4em;
+  padding: 0 0.4em;
+  text-align: center;
+}

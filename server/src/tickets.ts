@@ -6,6 +6,7 @@ import {
   nextSequence,
   ticketNumberPrefixFor,
 } from "./ticketNumber.js";
+import { buildOrderBy, parseTicketListQuery } from "./ticketListQuery.js";
 
 export const ticketsRouter = Router();
 
@@ -52,6 +53,129 @@ function internalError(res: Response, message: string) {
     error: { code: "INTERNAL_ERROR", message },
   });
 }
+
+/**
+ * Shared handler for the My Tickets list (api-spec.md §7).
+ *
+ * BR-08 — the Requester id is the only ownership key: every query is scoped to
+ * it, so a Requester can never see another Requester's Tickets.
+ */
+async function handleTicketList(
+  requesterIdRaw: string | undefined,
+  rawQuery: Record<string, unknown>,
+  res: Response,
+) {
+  if (
+    requesterIdRaw === undefined ||
+    !/^\d+$/.test(requesterIdRaw) ||
+    Number(requesterIdRaw) <= 0
+  ) {
+    return validationError(res, {
+      requesterId: "A valid requester is required.",
+    });
+  }
+  const requesterId = Number.parseInt(requesterIdRaw, 10);
+
+  const { query, fieldErrors } = parseTicketListQuery(rawQuery);
+  if (!query) return validationError(res, fieldErrors);
+
+  try {
+    const where = {
+      requesterId,
+      deletedAt: null,
+      // BR-22 — filters are additive and all optional.
+      ...(query.categoryId !== null ? { categoryId: query.categoryId } : {}),
+      ...(query.requestedPriority !== null
+        ? { requestedPriority: query.requestedPriority }
+        : {}),
+      ...(query.currentStatus !== null
+        ? { currentStatus: query.currentStatus }
+        : {}),
+      // BR-21 — search matches Ticket Number or Summary, within the owner scope.
+      ...(query.search
+        ? {
+            OR: [
+              {
+                ticketNumber: {
+                  contains: query.search,
+                  mode: "insensitive" as const,
+                },
+              },
+              {
+                summary: {
+                  contains: query.search,
+                  mode: "insensitive" as const,
+                },
+              },
+            ],
+          }
+        : {}),
+    };
+
+    const [totalItems, tickets] = await Promise.all([
+      getPrisma().ticket.count({ where }),
+      getPrisma().ticket.findMany({
+        where,
+        orderBy: buildOrderBy(query.sortBy, query.sortOrder),
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+        select: {
+          id: true,
+          ticketNumber: true,
+          summary: true,
+          requestedPriority: true,
+          currentStatus: true,
+          updatedAt: true,
+          category: { select: { name: true } },
+        },
+      }),
+    ]);
+
+    return res.status(200).json({
+      data: tickets.map((ticket) => ({
+        id: ticket.id,
+        ticketNumber: ticket.ticketNumber,
+        summary: ticket.summary,
+        category: ticket.category.name,
+        requestedPriority: ticket.requestedPriority,
+        currentStatus: ticket.currentStatus,
+        updatedAt: ticket.updatedAt,
+      })),
+      meta: {
+        page: query.page,
+        pageSize: query.pageSize,
+        totalItems,
+        totalPages: Math.ceil(totalItems / query.pageSize),
+      },
+    });
+  } catch (err) {
+    console.error("GET ticket list failed:", err);
+    return internalError(res, "Could not load tickets. Please try again.");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/requesters/:requesterId/tickets — the documented My Tickets list.
+// ---------------------------------------------------------------------------
+ticketsRouter.get(
+  "/api/requesters/:requesterId/tickets",
+  async (req: Request, res: Response) =>
+    handleTicketList(req.params.requesterId, req.query, res),
+);
+
+// ---------------------------------------------------------------------------
+// GET /api/tickets?requesterId=... — same list, requester supplied as a query
+// parameter. Ownership is still mandatory: without a requester there is no
+// list to return (BR-06, BR-08).
+// ---------------------------------------------------------------------------
+ticketsRouter.get("/api/tickets", async (req: Request, res: Response) => {
+  const { requesterId, ...rest } = req.query;
+  return handleTicketList(
+    typeof requesterId === "string" ? requesterId : undefined,
+    rest,
+    res,
+  );
+});
 
 // ---------------------------------------------------------------------------
 // FR-31 — active Related Systems for the Create Ticket reference data.

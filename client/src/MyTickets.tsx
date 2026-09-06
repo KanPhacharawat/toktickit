@@ -63,8 +63,11 @@ function hasActiveFilters(controls: ListControls): boolean {
 
 export default function MyTickets({
   onCreateTicket,
+  onOpenTicket,
 }: {
   onCreateTicket?: () => void;
+  /** Opens Ticket Detail for one owned ticket. */
+  onOpenTicket?: (ticketId: number) => void;
 }) {
   const { selectedRequester } = useRequester();
 
@@ -472,7 +475,18 @@ export default function MyTickets({
                 {rows.map((row) => (
                   <tr key={row.id}>
                     <td className="text-nowrap fw-semibold">
-                      {row.ticketNumber}
+                      {onOpenTicket ? (
+                        <button
+                          type="button"
+                          className="zen-link-button"
+                          onClick={() => onOpenTicket(row.id)}
+                        >
+                          {row.ticketNumber}
+                          <span className="visually-hidden"> — open detail</span>
+                        </button>
+                      ) : (
+                        row.ticketNumber
+                      )}
                     </td>
                     <td>{row.summary}</td>
                     <td>{row.category}</td>

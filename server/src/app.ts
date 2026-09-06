@@ -2,6 +2,7 @@ import express, { Request, Response } from "express";
 import cors from "cors";
 import { getPrisma } from "./prisma.js";
 import { ticketsRouter } from "./tickets.js";
+import { attachmentsRouter } from "./attachments.js";
 // getPrisma() is your lazy database handle. Call it INSIDE a route when you
 // need the DB (Issue 4). It is intentionally unused until then.
 
@@ -80,5 +81,6 @@ app.get("/api/development-requesters", async (_req: Request, res: Response) => {
 
 // Lab 2 — Create Ticket and its reference data.
 app.use(ticketsRouter);
+app.use(attachmentsRouter);
 
 export default app;

@@ -108,3 +108,101 @@ body {
   font-weight: 600;
   padding: 0.25rem 0.75rem;
 }
+
+/* --- Create Ticket ------------------------------------------------------ */
+
+/* Required marker: red asterisk, always paired with visually-hidden text so
+   "required" is never signalled by colour alone (ui-spec.md §10). */
+.zen-required {
+  color: var(--zen-error);
+  font-weight: 700;
+}
+
+.zen-input {
+  background-color: var(--zen-surface);
+  border: 1px solid var(--zen-border);
+  color: var(--zen-text);
+  min-height: 44px;
+}
+.zen-input:focus {
+  border-color: var(--zen-secondary);
+  box-shadow: none;
+}
+.zen-input:focus-visible {
+  outline: 3px solid var(--zen-secondary);
+  outline-offset: 2px;
+}
+
+/* Description is taller than a normal input (ui-spec.md §4). */
+.zen-textarea {
+  min-height: 140px;
+}
+
+/* System-generated values read as read-only, visually distinct from the
+   white editable fields (ui-spec.md §1, STYLE-03). */
+.zen-readonly-field {
+  background-color: var(--zen-readonly);
+  border: 1px solid var(--zen-border);
+  color: var(--zen-muted);
+  cursor: default;
+  min-height: 44px;
+}
+
+/* Invalid controls carry a dark-red border alongside their message. */
+.zen-invalid,
+.zen-invalid:focus {
+  border-color: var(--zen-error);
+  border-width: 2px;
+}
+
+.zen-error-banner {
+  background-color: #fdf2f4;
+  border: 1px solid var(--zen-error);
+  color: var(--zen-error);
+}
+
+.zen-warning-banner {
+  background-color: #fdf6e8;
+  border: 1px solid var(--zen-warning);
+  color: var(--zen-warning);
+}
+
+/* Success uses text as well as colour (ui-spec.md §10). */
+.zen-success-banner {
+  background-color: var(--zen-pale);
+  border: 1px solid var(--zen-primary);
+  border-left-width: 5px;
+  border-radius: 6px;
+  color: var(--zen-primary);
+  padding: 0.75rem 1rem;
+}
+
+.zen-ticket-number {
+  color: var(--zen-primary);
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  word-break: break-all;
+}
+
+/* --- Shell navigation --------------------------------------------------- */
+
+.zen-nav-link {
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: rgba(255, 255, 255, 0.85);
+  font-weight: 600;
+  padding: 0.25rem 0.25rem 0.35rem;
+}
+.zen-nav-link:hover:not(:disabled) {
+  color: #fff;
+}
+.zen-nav-link[aria-current="page"] {
+  border-bottom-color: #fff;
+  color: #fff;
+}
+.zen-nav-link:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+}

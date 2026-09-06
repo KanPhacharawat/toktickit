@@ -1,7 +1,16 @@
-import { test, expect, type Page } from "@playwright/test";
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
+import { test, expect } from "@playwright/test";
+import {
+  VIEWPORTS,
+  chooseRequesterOption,
+  createTicket,
+  expectNoHorizontalScroll,
+  gotoCreateTicket,
+  gotoMyTickets,
+  makePngFile,
+  openTicket,
+  selectRequester,
+  uniqueSummary,
+} from "./helpers.js";
 
 // E2E and responsive coverage from docs/lab-02/tests.md:
 //   RESP-01  Desktop Create Ticket        (AC-24)
@@ -9,118 +18,20 @@ import path from "node:path";
 //   RESP-03  Mobile Create Ticket         (AC-24)
 //   RESP-04  My Tickets responsive        (AC-24)
 //   E2E-01   Complete Create Ticket flow  (AC-01, AC-05, AC-06)
-//   E2E-02   My Tickets flow              (AC-11, AC-13–17)
+//   E2E-02   My Tickets flow              (AC-11, AC-13-17)
 //   E2E-03   Ownership flow               (AC-12)
-//   E2E-04   Attachment lifecycle         (AC-19–21)
+//   E2E-04   Attachment lifecycle         (AC-19-21)
 //   E2E-05   Responsive flow              (AC-24)
 //   E2E-06   Accessibility smoke test     (AC-25)
 //
 // These run against the real API and database. Every ticket created here is
-// tagged so the suite can identify its own rows.
+// tagged so the E2E cleanup script can identify its own rows. Shared page
+// helpers live in ./helpers.ts, which the responsive/visual suite also uses.
 
-const DESKTOP = { width: 1280, height: 900 };
-const TABLET = { width: 820, height: 1024 };
-const MOBILE = { width: 390, height: 844 };
+const DESKTOP = VIEWPORTS.desktop;
+const TABLET = VIEWPORTS.tablet;
+const MOBILE = VIEWPORTS.mobile;
 
-/** Marks rows created by this suite. */
-const TAG = "E2E";
-
-function uniqueSummary(label: string): string {
-  return `${TAG} ${label} ${Date.now().toString(36)}`;
-}
-
-const DESCRIPTION =
-  "Created by the Lab 2 end-to-end suite to exercise the requester journey.";
-
-/**
- * Chooses the option whose text contains `name`. The visible label is
- * "<name> — <department>", so an exact-label match would not find it.
- */
-async function chooseRequesterOption(page: Page, name: string) {
-  const select = page.getByLabel(/development requester/i);
-  await expect(select).toBeVisible();
-
-  const value = await select
-    .locator("option", { hasText: name })
-    .first()
-    .getAttribute("value");
-  expect(value, `no requester option matching "${name}"`).toBeTruthy();
-
-  await select.selectOption(value!);
-  await page.getByRole("button", { name: /continue/i }).click();
-  await expect(page.getByTestId("current-requester")).toContainText(name);
-}
-
-/** Opens the app and selects a Development Requester. */
-async function selectRequester(page: Page, name: string) {
-  await page.goto("/");
-  await chooseRequesterOption(page, name);
-}
-
-/** Navigates to Create Ticket through the shell nav. */
-async function gotoCreateTicket(page: Page) {
-  await page
-    .getByRole("navigation", { name: /main/i })
-    .getByRole("button", { name: /create ticket/i })
-    .click();
-  await expect(page.getByRole("form", { name: /create ticket/i })).toBeVisible();
-}
-
-/** Fills and submits Create Ticket, returning the official Ticket Number. */
-async function createTicket(page: Page, summary: string): Promise<string> {
-  await gotoCreateTicket(page);
-
-  await page.getByLabel(/^category/i).selectOption({ index: 1 });
-  await page.getByLabel(/related system/i).selectOption({ index: 1 });
-  await page.getByLabel(/ticket summary/i).fill(summary);
-  await page.getByLabel(/requested priority/i).selectOption("MEDIUM");
-  await page.getByLabel(/^description/i).fill(DESCRIPTION);
-
-  await page
-    .getByRole("form", { name: /create ticket/i })
-    .getByRole("button", { name: /^create ticket$/i })
-    .click();
-
-  const number = page.getByTestId("created-ticket-number");
-  await expect(number).toBeVisible();
-  return ((await number.textContent()) ?? "").trim();
-}
-
-/** Opens Ticket Detail from the My Tickets list. */
-async function openTicket(page: Page, ticketNumber: string) {
-  await page
-    .getByRole("navigation", { name: /main/i })
-    .getByRole("button", { name: /my tickets/i })
-    .click();
-  await page.getByLabel(/^search$/i).fill(ticketNumber);
-  await page.getByRole("button", { name: /^search$/i }).click();
-  await page.getByRole("button", { name: new RegExp(ticketNumber) }).click();
-  await expect(page.getByTestId("detail-ticket-number")).toHaveText(ticketNumber);
-}
-
-/** Writes a small valid PNG to a temp file for upload. */
-async function makePngFile(name: string): Promise<string> {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "toktickit-e2e-"));
-  const filePath = path.join(dir, name);
-  await fs.writeFile(
-    filePath,
-    Buffer.from(
-      "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c6360000002000100ffff03000006000557bfabd40000000049454e44ae426082",
-      "hex",
-    ),
-  );
-  return filePath;
-}
-
-/** AC-24 — the page itself must never scroll sideways. */
-async function expectNoHorizontalScroll(page: Page) {
-  const overflow = await page.evaluate(() => {
-    const doc = document.documentElement;
-    return doc.scrollWidth - doc.clientWidth;
-  });
-  // Allow a single pixel for sub-pixel rounding.
-  expect(overflow).toBeLessThanOrEqual(1);
-}
 
 // ---------------------------------------------------------------------------
 // E2E-01 — Complete Create Ticket flow (AC-01, AC-05, AC-06)
@@ -217,6 +128,9 @@ test("E2E-03 — switching requester hides the other requester's ticket data", a
   const summary = uniqueSummary("ownership flow");
   const ticketNumber = await createTicket(page, summary);
 
+  // The owner can open it before the switch.
+  await openTicket(page, ticketNumber);
+
   // Switch to Requester B.
   await page.getByRole("button", { name: /change requester/i }).click();
   await chooseRequesterOption(page, "Requester B");
@@ -226,6 +140,56 @@ test("E2E-03 — switching requester hides the other requester's ticket data", a
   await page.getByRole("button", { name: /^search$/i }).click();
   await expect(page.getByTestId("no-results-state")).toBeVisible();
   await expect(page.getByRole("button", { name: ticketNumber })).toHaveCount(0);
+});
+
+// ---------------------------------------------------------------------------
+// E2E-03b — a cross-requester ticket cannot be reached directly either
+// (AC-12, BR-09). Hiding it from the list is not enough: the resource itself
+// must refuse another requester.
+// ---------------------------------------------------------------------------
+test("E2E-03b — another requester's ticket cannot be fetched directly", async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize(DESKTOP);
+  await selectRequester(page, "Requester A");
+
+  const summary = uniqueSummary("direct access");
+  const ticketNumber = await createTicket(page, summary);
+
+  // Find the owner's requester id and the ticket id from the owner's own list.
+  const owned = await request.get("http://localhost:3000/api/development-requesters");
+  const requesters = (await owned.json()).data as Array<{ id: number; name: string }>;
+  const requesterA = requesters.find((r) => r.name === "Requester A")!;
+  const requesterB = requesters.find((r) => r.name === "Requester B")!;
+
+  const list = await request.get(
+    `http://localhost:3000/api/requesters/${requesterA.id}/tickets?search=${ticketNumber}`,
+  );
+  const rows = (await list.json()).data as Array<{ id: number }>;
+  expect(rows).toHaveLength(1);
+  const ticketId = rows[0].id;
+
+  // The owner can read it.
+  const asOwner = await request.get(
+    `http://localhost:3000/api/requesters/${requesterA.id}/tickets/${ticketId}`,
+  );
+  expect(asOwner.status()).toBe(200);
+
+  // Another requester cannot — and learns nothing about it.
+  const asOther = await request.get(
+    `http://localhost:3000/api/requesters/${requesterB.id}/tickets/${ticketId}`,
+  );
+  expect(asOther.status()).toBe(403);
+  const body = JSON.stringify(await asOther.json());
+  expect(body).not.toContain(ticketNumber);
+  expect(body).not.toContain(summary);
+
+  // Their attachment endpoints are closed too (AC-22).
+  const attachments = await request.get(
+    `http://localhost:3000/api/requesters/${requesterB.id}/tickets/${ticketId}/attachments`,
+  );
+  expect(attachments.status()).toBe(403);
 });
 
 // ---------------------------------------------------------------------------

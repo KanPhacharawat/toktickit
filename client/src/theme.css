@@ -325,7 +325,11 @@ body {
   border: none;
   color: var(--zen-secondary);
   font-weight: 700;
-  padding: 0;
+  /* Opening a ticket is the list's primary action, so the target stays
+     comfortably tappable rather than shrinking to the text height
+     (ui-spec.md §9). */
+  min-height: 32px;
+  padding: 0.25rem 0;
   text-align: left;
   text-decoration: underline;
 }
@@ -352,4 +356,12 @@ body {
   border: 1px solid var(--zen-border);
   border-radius: 6px;
   padding: 0.75rem;
+}
+
+/* Touch-friendly floor for the compact buttons used in the shell, the
+   attachment rows, and pagination. Bootstrap's .btn-sm renders at 31px,
+   which is below a comfortable tap target on tablet and mobile
+   (ui-spec.md §9: "Buttons remain touch-friendly"). */
+.btn-sm {
+  min-height: 32px;
 }

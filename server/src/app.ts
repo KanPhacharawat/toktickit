@@ -46,4 +46,33 @@ app.get("/api/categories", async (_req: Request, res: Response) => {
     });
   }
 });
+
+// ---------------------------------------------------------------------------
+// Lab 2 — Development Requester selection
+// GET /api/development-requesters
+//   -> FR-32/BR-05: active Development Requesters only.
+//   -> The selected Requester is the Lab 2 testing identity (BR-04). It is
+//      NOT authentication; Lab 3 replaces it with a real signed-in user.
+// ---------------------------------------------------------------------------
+app.get("/api/development-requesters", async (_req: Request, res: Response) => {
+  try {
+    const requesters = await getPrisma().developmentRequester.findMany({
+      // Inactive and soft-removed Requesters never reach the selector (AC-03).
+      where: { isActive: true, deletedAt: null },
+      select: { id: true, name: true, email: true, department: true },
+      orderBy: { id: "asc" },
+    });
+    res.status(200).json({ data: requesters });
+  } catch (err) {
+    console.error("GET /api/development-requesters failed:", err);
+    // BR-39 — safe message only, no internal details.
+    res.status(500).json({
+      error: {
+        code: "INTERNAL_ERROR",
+        message: "Failed to load development requesters.",
+      },
+    });
+  }
+});
+
 export default app;

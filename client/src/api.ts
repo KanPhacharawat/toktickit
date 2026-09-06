@@ -261,6 +261,224 @@ export async function fetchMyTickets(
   return { data: parsed.data, meta: parsed.meta };
 }
 
+// ---------------------------------------------------------------------------
+// Ticket Detail and Attachments
+// ---------------------------------------------------------------------------
+
+export interface AttachmentMetadata {
+  id: number;
+  originalFilename: string;
+  mimeType: string;
+  fileSize: number;
+  uploadedAt: string;
+  /** Soft removal: non-null means removed (BR-27, BR-36). */
+  removedAt: string | null;
+  removalReason: string | null;
+}
+
+export interface TicketDetail {
+  id: number;
+  ticketNumber: string;
+  ticketDate: string;
+  requester: { id: number; name: string; email?: string };
+  category: ReferenceItem;
+  relatedSystem: ReferenceItem;
+  summary: string;
+  description: string;
+  requestedPriority: RequestedPriority;
+  currentStatus: string;
+  createdAt: string;
+  updatedAt: string;
+  attachments: AttachmentMetadata[];
+}
+
+/** Reads a JSON body, tolerating a non-JSON error page. */
+async function readJson(res: Response): Promise<unknown> {
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+function toApiError(res: Response, body: unknown, fallback: string): ApiError {
+  const error = (body as { error?: Record<string, unknown> } | null)?.error;
+  return new ApiError(
+    typeof error?.message === "string" ? error.message : fallback,
+    {
+      status: res.status,
+      code: typeof error?.code === "string" ? error.code : "UNKNOWN",
+      fieldErrors:
+        typeof error?.fieldErrors === "object" && error.fieldErrors !== null
+          ? (error.fieldErrors as Record<string, string>)
+          : {},
+    },
+  );
+}
+
+const ticketUrl = (requesterId: number, ticketId: number) =>
+  `${API_URL}/api/requesters/${requesterId}/tickets/${ticketId}`;
+
+/**
+ * BR-09 — the server refuses a Ticket owned by someone else. The thrown
+ * ApiError carries the status so the UI can show an ownership message.
+ */
+export async function fetchTicketDetail(
+  requesterId: number,
+  ticketId: number,
+): Promise<TicketDetail> {
+  let res: Response;
+  try {
+    res = await fetch(ticketUrl(requesterId, ticketId));
+  } catch {
+    throw new ApiError("Could not reach the server. Please try again.", {
+      status: 0,
+      code: "NETWORK_ERROR",
+    });
+  }
+
+  const body = await readJson(res);
+  if (!res.ok) {
+    throw toApiError(res, body, "Could not load the ticket. Please try again.");
+  }
+
+  const data = (body as { data?: TicketDetail } | null)?.data;
+  if (!data?.ticketNumber) {
+    throw new ApiError("The ticket response was not understood.", {
+      status: res.status,
+      code: "BAD_RESPONSE",
+    });
+  }
+  return data;
+}
+
+/** BR-10 — upload is scoped to a Ticket the Requester owns. */
+export async function uploadAttachment(
+  requesterId: number,
+  ticketId: number,
+  file: File,
+): Promise<AttachmentMetadata> {
+  const form = new FormData();
+  form.append("file", file);
+
+  let res: Response;
+  try {
+    res = await fetch(`${ticketUrl(requesterId, ticketId)}/attachments`, {
+      method: "POST",
+      body: form,
+    });
+  } catch {
+    throw new ApiError("Could not reach the server. Please try again.", {
+      status: 0,
+      code: "NETWORK_ERROR",
+    });
+  }
+
+  const body = await readJson(res);
+  if (!res.ok) {
+    throw toApiError(
+      res,
+      body,
+      "Could not upload the attachment. Please try again.",
+    );
+  }
+
+  const data = (body as { data?: AttachmentMetadata } | null)?.data;
+  if (!data?.id) {
+    throw new ApiError("The upload response was not understood.", {
+      status: res.status,
+      code: "BAD_RESPONSE",
+    });
+  }
+  return data;
+}
+
+/** BR-38 — includes removed attachments, which stay visible as metadata. */
+export async function fetchAttachments(
+  requesterId: number,
+  ticketId: number,
+): Promise<AttachmentMetadata[]> {
+  let res: Response;
+  try {
+    res = await fetch(`${ticketUrl(requesterId, ticketId)}/attachments`);
+  } catch {
+    throw new ApiError("Could not reach the server. Please try again.", {
+      status: 0,
+      code: "NETWORK_ERROR",
+    });
+  }
+
+  const body = await readJson(res);
+  if (!res.ok) {
+    throw toApiError(res, body, "Could not load attachments.");
+  }
+
+  const data = (body as { data?: AttachmentMetadata[] } | null)?.data;
+  if (!Array.isArray(data)) {
+    throw new ApiError("The attachment response was not understood.", {
+      status: res.status,
+      code: "BAD_RESPONSE",
+    });
+  }
+  return data;
+}
+
+/**
+ * The download URL for an active attachment. Removed attachments must never
+ * be linked (BR-37); the server answers 410 if one is requested anyway.
+ */
+export function attachmentDownloadUrl(
+  requesterId: number,
+  ticketId: number,
+  attachmentId: number,
+): string {
+  return `${ticketUrl(requesterId, ticketId)}/attachments/${attachmentId}`;
+}
+
+/** BR-35 — soft removal requires an explicit, non-empty reason. */
+export async function removeAttachment(
+  requesterId: number,
+  ticketId: number,
+  attachmentId: number,
+  removalReason: string,
+): Promise<{ id: number; removedAt: string; removalReason: string }> {
+  let res: Response;
+  try {
+    res = await fetch(
+      `${ticketUrl(requesterId, ticketId)}/attachments/${attachmentId}`,
+      {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ removalReason }),
+      },
+    );
+  } catch {
+    throw new ApiError("Could not reach the server. Please try again.", {
+      status: 0,
+      code: "NETWORK_ERROR",
+    });
+  }
+
+  const body = await readJson(res);
+  if (!res.ok) {
+    throw toApiError(
+      res,
+      body,
+      "Could not remove the attachment. Please try again.",
+    );
+  }
+
+  const data = (body as { data?: { id: number; removedAt: string; removalReason: string } } | null)
+    ?.data;
+  if (!data?.id) {
+    throw new ApiError("The removal response was not understood.", {
+      status: res.status,
+      code: "BAD_RESPONSE",
+    });
+  }
+  return data;
+}
+
 /**
  * Creates one Ticket. Throws ApiError on any failure so the caller can keep
  * the user's entered values and show a safe message (BR-20, BR-39).

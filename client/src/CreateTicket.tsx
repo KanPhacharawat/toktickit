@@ -5,6 +5,7 @@ import {
   createTicket,
   fetchCategories,
   fetchRelatedSystems,
+  uploadAttachment,
   type CreatedTicket,
   type ReferenceItem,
   type RequestedPriority,
@@ -75,6 +76,8 @@ export default function CreateTicket({ onDone }: CreateTicketProps) {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [created, setCreated] = useState<CreatedTicket | null>(null);
+  /** BR-34 — attachments that failed to upload after the ticket was saved. */
+  const [failedAttachments, setFailedAttachments] = useState<string[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -161,6 +164,25 @@ export default function CreateTicket({ onDone }: CreateTicketProps) {
         requestedPriority: values.requestedPriority as RequestedPriority,
       });
       setCreated(ticket);
+
+      // Assumption 10 — attachments upload after the ticket exists. BR-34:
+      // if an upload fails the ticket stays saved and only the attachment
+      // failure is reported.
+      if (attachments.length > 0) {
+        const failed: string[] = [];
+        for (const candidate of attachments) {
+          try {
+            await uploadAttachment(
+              selectedRequester!.id,
+              ticket.id,
+              candidate.file,
+            );
+          } catch {
+            failed.push(candidate.name);
+          }
+        }
+        setFailedAttachments(failed);
+      }
     } catch (err) {
       // BR-20 — `values` is untouched here, so everything the user typed
       // stays on screen for correction or retry.
@@ -215,18 +237,31 @@ export default function CreateTicket({ onDone }: CreateTicketProps) {
             <dd className="col-sm-8 mb-0">{created.summary}</dd>
           </dl>
 
-          {attachments.length > 0 && (
-            <div className="alert zen-warning-banner mt-4 mb-0" role="status">
+          {/* BR-34 — the ticket is saved either way; only the attachment
+              failures are reported. */}
+          {failedAttachments.length > 0 && (
+            <div className="alert zen-warning-banner mt-4 mb-0" role="alert">
               <strong>
-                {attachments.length} selected{" "}
-                {attachments.length === 1 ? "file was" : "files were"} not
-                uploaded.
+                {failedAttachments.length}{" "}
+                {failedAttachments.length === 1 ? "file" : "files"} could not be
+                attached.
               </strong>
-              <p className="mb-0 mt-1 small">
-                Attachment upload is delivered by the Attachments issue. The
-                ticket above is saved and unaffected.
+              <p className="mb-1 mt-1 small">
+                The ticket above is saved. Open it from My Tickets to try the
+                attachment again.
               </p>
+              <ul className="mb-0 small">
+                {failedAttachments.map((name) => (
+                  <li key={name}>{name}</li>
+                ))}
+              </ul>
             </div>
+          )}
+
+          {attachments.length > 0 && failedAttachments.length === 0 && (
+            <p className="text-secondary small mt-4 mb-0" data-testid="attachments-uploaded">
+              {`${attachments.length} ${attachments.length === 1 ? "file" : "files"} attached.`}
+            </p>
           )}
 
           <div className="d-flex flex-wrap gap-2 mt-4">
@@ -238,6 +273,7 @@ export default function CreateTicket({ onDone }: CreateTicketProps) {
                 setValues(EMPTY_TICKET_FORM);
                 setAttachments([]);
                 setAttachmentErrors([]);
+                setFailedAttachments([]);
               }}
             >
               Create another ticket

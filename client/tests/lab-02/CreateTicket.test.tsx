@@ -479,6 +479,62 @@ describe("Create Ticket", () => {
     expect(screen.queryByTestId("attachment-name")).not.toBeInTheDocument();
   });
 
+  it("uploads selected attachments after the ticket is created", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "createTicket").mockResolvedValue(CREATED);
+    const uploadSpy = vi.spyOn(api, "uploadAttachment").mockResolvedValue({
+      id: 501,
+      originalFilename: "screenshot.png",
+      mimeType: "image/png",
+      fileSize: 2048,
+      uploadedAt: "2026-09-05T12:40:00.000Z",
+      removedAt: null,
+      removalReason: null,
+    });
+
+    await openCreateTicket(user);
+    await user.upload(
+      screen.getByLabelText(/select attachments/i),
+      makeFile("screenshot.png", "image/png", 2048),
+    );
+    await fillValidForm(user);
+    await submit(user);
+
+    await screen.findByTestId("created-ticket-number");
+    // Assumption 10 — uploaded against the ticket the backend just created.
+    await waitFor(() => expect(uploadSpy).toHaveBeenCalledTimes(1));
+    expect(uploadSpy.mock.calls[0][0]).toBe(11);
+    expect(uploadSpy.mock.calls[0][1]).toBe(CREATED.id);
+    expect(await screen.findByTestId("attachments-uploaded")).toHaveTextContent(
+      "1 file attached",
+    );
+  });
+
+  it("keeps the ticket and reports the failure when an upload fails (BR-34)", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "createTicket").mockResolvedValue(CREATED);
+    vi.spyOn(api, "uploadAttachment").mockRejectedValue(
+      new api.ApiError("Could not upload the attachment.", { status: 500 }),
+    );
+
+    await openCreateTicket(user);
+    await user.upload(
+      screen.getByLabelText(/select attachments/i),
+      makeFile("screenshot.png", "image/png", 2048),
+    );
+    await fillValidForm(user);
+    await submit(user);
+
+    // BR-34 — the ticket number is still shown; the ticket is not rolled back.
+    expect(await screen.findByTestId("created-ticket-number")).toHaveTextContent(
+      "TT-20260905-0042",
+    );
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/could not be attached/i);
+    expect(alert).toHaveTextContent("screenshot.png");
+    expect(alert.textContent).not.toMatch(/prisma|postgres|sql|stack|\.ts:/i);
+  });
+
   it("does not block ticket creation when no attachment is selected", async () => {
     const user = userEvent.setup();
     vi.spyOn(api, "createTicket").mockResolvedValue(CREATED);

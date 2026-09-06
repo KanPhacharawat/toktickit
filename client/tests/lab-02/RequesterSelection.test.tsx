@@ -1,14 +1,24 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import Lab2App from "../../src/lab2/Lab2App.js";
-import * as api from "../../src/lab2/api.js";
+import Lab2App from "../../src/Lab2App.js";
+import * as api from "../../src/api.js";
 
 // Deliberately not the seeded names: if the component hard-coded requesters
 // in JSX instead of rendering the API result, these assertions would fail.
 const REQUESTERS: api.DevelopmentRequester[] = [
-  { id: 11, name: "Alpha Requester", email: "alpha@example.com", department: "Finance" },
-  { id: 22, name: "Beta Requester", email: "beta@example.com", department: "Library" },
+  {
+    id: 11,
+    name: "Alpha Requester",
+    email: "alpha@example.com",
+    department: "Finance",
+  },
+  {
+    id: 22,
+    name: "Beta Requester",
+    email: "beta@example.com",
+    department: "Library",
+  },
 ];
 
 function mockRequesters(data = REQUESTERS) {
@@ -16,7 +26,10 @@ function mockRequesters(data = REQUESTERS) {
 }
 
 /** Selects a requester through the dropdown and presses Continue. */
-async function chooseRequester(user: ReturnType<typeof userEvent.setup>, name: RegExp) {
+async function chooseRequester(
+  user: ReturnType<typeof userEvent.setup>,
+  name: RegExp,
+) {
   await user.selectOptions(
     await screen.findByLabelText(/development requester/i),
     screen.getByRole("option", { name }),
@@ -44,7 +57,9 @@ describe("Requester Selection", () => {
     expect(
       await screen.findByRole("option", { name: /Alpha Requester/ }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: /Beta Requester/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: /Beta Requester/ }),
+    ).toBeInTheDocument();
   });
 
   // UI-02 / AC-03 — the component renders exactly what the API returns, and
@@ -72,7 +87,9 @@ describe("Requester Selection", () => {
 
     render(<Lab2App />);
 
-    expect(screen.getByRole("status")).toHaveTextContent(/loading development requesters/i);
+    expect(screen.getByRole("status")).toHaveTextContent(
+      /loading development requesters/i,
+    );
 
     resolvePending(REQUESTERS);
     expect(
@@ -109,7 +126,9 @@ describe("Requester Selection", () => {
     expect(alert).toHaveTextContent(/unable to load development requesters/i);
     expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
     // BR-39 — no server internals leak into the UI.
-    expect(alert.textContent).not.toMatch(/prisma|postgres|stack|sql|at .*\.ts:/i);
+    expect(alert.textContent).not.toMatch(
+      /prisma|postgres|stack|sql|at .*\.ts:/i,
+    );
   });
 
   it("reloads the requesters when Retry is pressed", async () => {
@@ -154,7 +173,9 @@ describe("Requester Selection", () => {
     mockRequesters();
     render(<Lab2App />);
 
-    const continueButton = await screen.findByRole("button", { name: /continue/i });
+    const continueButton = await screen.findByRole("button", {
+      name: /continue/i,
+    });
     expect(continueButton).toBeDisabled();
 
     await user.selectOptions(
@@ -224,7 +245,9 @@ describe("Requester Selection", () => {
 
     // 999 is not in the active list, so the selector is shown instead.
     await waitFor(() =>
-      expect(screen.getByLabelText(/development requester/i)).toBeInTheDocument(),
+      expect(
+        screen.getByLabelText(/development requester/i),
+      ).toBeInTheDocument(),
     );
     expect(screen.queryByTestId("current-requester")).not.toBeInTheDocument();
   });

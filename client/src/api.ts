@@ -1,36 +1,37 @@
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 
-export interface Category {
+/** A Lab 2 testing identity (BR-04). Not a real authenticated user. */
+export interface DevelopmentRequester {
   id: number;
   name: string;
+  email: string;
+  department?: string | null;
 }
 
-export interface SystemStatus {
-  online: boolean;
-  categories: Category[];
-}
-
-// Issue 2 + Issue 4 — call the backend.
-// Steps: fetch `${API_URL}/api/health`; if not ok, throw.
-//        then fetch `${API_URL}/api/categories`; if not ok, throw.
-//        return { online: true, categories }.
-// Throwing on failure lets the UI show a single Offline/error state.
-export async function checkSystem(): Promise<SystemStatus> {
-  const health = await fetch(`${API_URL}/api/health`);
-
-  if (!health.ok) {
-    throw new Error("Backend is unavailable");
+/**
+ * FR-32 — load the active Development Requesters for the selector.
+ *
+ * Throws on any failure so the caller renders a single safe error state
+ * (BR-39: no server internals reach the user).
+ */
+export async function fetchActiveRequesters(): Promise<DevelopmentRequester[]> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/development-requesters`);
+  } catch {
+    // Network/DNS/CORS failure — the API was never reached.
+    throw new Error("Could not reach the server. Please try again.");
   }
 
-  const res = await fetch(`${API_URL}/api/categories`);
   if (!res.ok) {
-    throw new Error("Could not load categories");
+    throw new Error("Could not load development requesters.");
   }
 
-  const categories = (await res.json()) as Category[];
+  const body = (await res.json()) as { data?: DevelopmentRequester[] };
 
-  return {
-    online: true,
-    categories,
-  };
+  if (!Array.isArray(body.data)) {
+    throw new Error("Could not load development requesters.");
+  }
+
+  return body.data;
 }

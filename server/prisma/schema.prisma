@@ -11,16 +11,172 @@ datasource db {
 }
 
 // ---------------------------------------------------------------------------
-// Issue 3 — Create and seed IT request categories
-// Define a Category model with:
-//   id        Int      @id @default(autoincrement())
-//   name      String   @unique
-//   createdAt DateTime @default(now())
-// Then run:  npx prisma migrate dev --name init
-// TODO(Issue 3): add the Category model below.
+// Enums
 // ---------------------------------------------------------------------------
+
+/// BR-15 — Requested Priority must be one of LOW, MEDIUM, HIGH, URGENT.
+enum RequestedPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+/// BR-02 — Every newly created Ticket starts with Current Status `New`.
+/// The later statuses exist so the Lab 3 IT Staff workflow can move a Ticket
+/// forward without another schema migration.
+enum TicketStatus {
+  New
+  InProgress
+  OnHold
+  Resolved
+  Closed
+  Cancelled
+}
+
+// ---------------------------------------------------------------------------
+// Reference data
+// ---------------------------------------------------------------------------
+
+/// IT request category (Account and Access, Hardware, Software, Network).
 model Category {
   id        Int      @id @default(autoincrement())
   name      String   @unique
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
   createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+  deletedAt DateTime?
+
+  tickets Ticket[]
+
+  // FR-30 — only active Categories are listed; deletedAt is the soft-removal flag.
+  @@index([isActive])
+  @@index([deletedAt])
+}
+
+/// A system or asset a Ticket can be raised against (Campus Wi-Fi, VPN, ...).
+model RelatedSystem {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+  deletedAt DateTime?
+
+  tickets Ticket[]
+
+  // FR-31 — only active Related Systems are listed.
+  @@index([isActive])
+  @@index([deletedAt])
+}
+
+/// BR-04 — Lab 2 testing identity. Replaced by real authentication in Lab 3;
+/// Tickets keep pointing at this row so ownership does not need redesigning
+/// (BR-40).
+model DevelopmentRequester {
+  id         Int      @id @default(autoincrement())
+  name       String
+  email      String   @unique
+  department String?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+  deletedAt  DateTime?
+
+  tickets Ticket[]
+
+  // BR-05 / FR-32 — the selector loads active Requesters only.
+  @@index([isActive])
+  @@index([deletedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Tickets
+// ---------------------------------------------------------------------------
+
+model Ticket {
+  id Int @id @default(autoincrement())
+
+  /// BR-01 — backend-generated and unique (e.g. "TT-20260905-0001").
+  ticketNumber String @unique
+
+  /// BR-03 — backend timestamp, never supplied by the Requester.
+  ticketDate DateTime @default(now())
+
+  requesterId     Int
+  categoryId      Int
+  relatedSystemId Int
+
+  /// BR-11 — 5–200 characters after trimming (enforced in the service layer).
+  summary String @db.VarChar(200)
+
+  /// BR-12 — 10–5000 characters after trimming.
+  description String @db.Text
+
+  requestedPriority RequestedPriority
+  currentStatus     TicketStatus      @default(New)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @default(now()) @updatedAt
+  deletedAt DateTime?
+
+  // Reference rows are never hard-deleted out from under a Ticket.
+  requester     DevelopmentRequester @relation(fields: [requesterId], references: [id], onDelete: Restrict)
+  category      Category             @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  relatedSystem RelatedSystem        @relation(fields: [relatedSystemId], references: [id], onDelete: Restrict)
+
+  attachments Attachment[]
+
+  // BR-08 — ownership lookups.
+  @@index([requesterId])
+  // BR-24 — default list ordering: updatedAt desc within one Requester.
+  @@index([requesterId, updatedAt])
+  // BR-22 — filters.
+  @@index([categoryId])
+  @@index([relatedSystemId])
+  @@index([requestedPriority])
+  @@index([currentStatus])
+  // BR-23 — sorting.
+  @@index([ticketDate])
+  @@index([updatedAt])
+  @@index([deletedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Attachments
+// ---------------------------------------------------------------------------
+
+/// BR-32 — metadata record. BR-36 — removal sets `removedAt` instead of
+/// deleting the row.
+model Attachment {
+  id       Int @id @default(autoincrement())
+  ticketId Int
+
+  /// BR-33 — display metadata only, never used as a filesystem path.
+  originalFilename String
+
+  /// BR-33 — server-generated storage identifier.
+  storageKey String @unique
+
+  mimeType String
+  fileSize Int
+
+  uploadedAt DateTime @default(now())
+
+  /// Soft removal: non-null means removed (BR-27, BR-36).
+  removedAt DateTime?
+  /// BR-35 — required, non-empty, when `removedAt` is set.
+  removalReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  // Attachment lookup per Ticket, and the active/removed split (BR-31, BR-38).
+  @@index([ticketId])
+  @@index([ticketId, removedAt])
+  @@index([removedAt])
 }

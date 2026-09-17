@@ -1,17 +1,42 @@
-import express, { Request, Response } from "express";
+import express, { NextFunction, Request, Response } from "express";
 import cors from "cors";
 import { getPrisma } from "./prisma.js";
 import { ticketsRouter } from "./tickets.js";
 import { attachmentsRouter } from "./attachments.js";
+import { authRouter } from "./auth/routes.js";
+import { bcryptCost } from "./auth/credentials.js";
 // getPrisma() is your lazy database handle. Call it INSIDE a route when you
 // need the DB (Issue 4). It is intentionally unused until then.
+
+// Lab 3 BR-12 — refuse to start with a weakened bcrypt cost.
+bcryptCost();
 
 // The Express app is exported separately from app.listen() (see index.ts) so
 // Supertest can import `app` without opening a port. Do not merge these files.
 export const app = express();
 
-app.use(cors()); // already wired: lets the Vite dev server call this API
+// Lab 3 BR-17 — the session cookie only travels with credentialed requests,
+// which browsers allow for one exact origin, never `*`.
+export const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN ?? "http://localhost:5173";
+app.use(cors({ origin: CLIENT_ORIGIN, credentials: true }));
 app.use(express.json());
+
+// A malformed JSON body gets the documented envelope instead of Express's
+// default HTML error page (api-spec.md §1.1).
+app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
+  if ((err as { type?: string }).type === "entity.parse.failed") {
+    return res.status(400).json({
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "The request body is not valid JSON.",
+      },
+    });
+  }
+  return next(err);
+});
+
+// Lab 3 — login, logout, current user, change password.
+app.use(authRouter);
 
 // ---------------------------------------------------------------------------
 // Issue 2 — API health check
@@ -60,9 +85,11 @@ app.get("/api/categories", async (_req: Request, res: Response) => {
 // ---------------------------------------------------------------------------
 app.get("/api/development-requesters", async (_req: Request, res: Response) => {
   try {
-    const requesters = await getPrisma().developmentRequester.findMany({
+    const requesters = await getPrisma().user.findMany({
       // Inactive and soft-removed Requesters never reach the selector (AC-03).
-      where: { isActive: true, deletedAt: null },
+      // Lab 3: Development Requesters now live in `User`; only the Requester
+      // role belongs in this Lab 2 selector until it is removed.
+      where: { role: "Requester", isActive: true, deletedAt: null },
       select: { id: true, name: true, email: true, department: true },
       orderBy: { id: "asc" },
     });

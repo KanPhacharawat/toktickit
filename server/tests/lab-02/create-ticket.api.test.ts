@@ -53,8 +53,8 @@ function uniqueBody(overrides: Record<string, unknown> = {}) {
 
 beforeAll(async () => {
   const [requesters, category, relatedSystem, inactive] = await Promise.all([
-    prisma.developmentRequester.findMany({
-      where: { isActive: true, deletedAt: null },
+    prisma.user.findMany({
+      where: { role: "Requester", isActive: true, deletedAt: null },
       orderBy: { id: "asc" },
       take: 2,
       select: { id: true },
@@ -67,8 +67,8 @@ beforeAll(async () => {
       where: { isActive: true },
       select: { id: true },
     }),
-    prisma.developmentRequester.findFirst({
-      where: { isActive: false },
+    prisma.user.findFirst({
+      where: { role: "Requester", isActive: false },
       select: { id: true },
     }),
   ]);
@@ -476,7 +476,7 @@ describe("API-02 — unexpected failure stays safe (AC-23)", () => {
   it("returns a safe 500 without leaking internals", async () => {
     // Silence the deliberate console.error this test provokes.
     vi.spyOn(console, "error").mockImplementation(() => {});
-    vi.spyOn(prisma.developmentRequester, "findFirst").mockRejectedValue(
+    vi.spyOn(prisma.user, "findFirst").mockRejectedValue(
       new Error(
         'Invalid `prisma.ticket.create()` at C:\\repo\\server\\src\\tickets.ts:120',
       ),

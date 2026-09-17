@@ -72,24 +72,66 @@ model RelatedSystem {
   @@index([deletedAt])
 }
 
-/// BR-04 — Lab 2 testing identity. Replaced by real authentication in Lab 3;
-/// Tickets keep pointing at this row so ownership does not need redesigning
-/// (BR-40).
-model DevelopmentRequester {
-  id         Int      @id @default(autoincrement())
-  name       String
-  email      String   @unique
+/// Lab 3 BR-06 — every user has exactly one role.
+enum UserRole {
+  Requester
+  ITStaff
+  Administrator
+}
+
+// ---------------------------------------------------------------------------
+// Users and sessions (Lab 3)
+// ---------------------------------------------------------------------------
+
+/// Lab 3 §7.2 — renamed in place from the Lab 2 `DevelopmentRequester`, so ids
+/// and Ticket ownership survive the migration (BR-57).
+model User {
+  id    Int    @id @default(autoincrement())
+  name  String
+  /// BR-11 — stored trimmed and lower-cased.
+  email String @unique
+
+  role UserRole @default(Requester)
+
+  /// BR-12 — bcrypt hash only. Null only for migrated users who have not been
+  /// issued an initial password yet; they cannot log in (BR-58).
+  passwordHash       String?
+  /// BR-02 — true until the user saves a password of their own.
+  mustChangePassword Boolean   @default(true)
+  passwordChangedAt  DateTime?
+  lastLoginAt        DateTime?
+
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @default(now()) @updatedAt
+  /// Lab 2 columns retained so no data is dropped; unused in Lab 3.
   department String?
-  isActive   Boolean  @default(true)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @default(now()) @updatedAt
   deletedAt  DateTime?
 
-  tickets Ticket[]
+  tickets  Ticket[]
+  sessions Session[]
 
-  // BR-05 / FR-32 — the selector loads active Requesters only.
   @@index([isActive])
   @@index([deletedAt])
+  @@index([role, isActive])
+}
+
+/// BR-17 — server-side session. Only the SHA-256 hash of the cookie token is
+/// stored, so a database leak does not hand out working sessions.
+model Session {
+  id        Int       @id @default(autoincrement())
+  tokenHash String    @unique
+  userId    Int
+  createdAt DateTime  @default(now())
+  /// BR-18 — absolute expiry, not extended by activity.
+  expiresAt DateTime
+  /// BR-19 / BR-21 / BR-22 — set on logout or revocation.
+  revokedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 // ---------------------------------------------------------------------------
@@ -123,9 +165,9 @@ model Ticket {
   deletedAt DateTime?
 
   // Reference rows are never hard-deleted out from under a Ticket.
-  requester     DevelopmentRequester @relation(fields: [requesterId], references: [id], onDelete: Restrict)
-  category      Category             @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  relatedSystem RelatedSystem        @relation(fields: [relatedSystemId], references: [id], onDelete: Restrict)
+  requester     User          @relation(fields: [requesterId], references: [id], onDelete: Restrict)
+  category      Category      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  relatedSystem RelatedSystem @relation(fields: [relatedSystemId], references: [id], onDelete: Restrict)
 
   attachments Attachment[]
 

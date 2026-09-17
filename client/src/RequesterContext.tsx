@@ -31,7 +31,7 @@ export interface RequesterContextValue {
   reload: () => void;
 }
 
-const RequesterContext = createContext<RequesterContextValue | null>(null);
+export const RequesterContext = createContext<RequesterContextValue | null>(null);
 
 function readStoredId(): number | null {
   try {

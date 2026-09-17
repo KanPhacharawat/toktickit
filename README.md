@@ -125,6 +125,23 @@ Replace `YOUR_PASSWORD` with the password of your local PostgreSQL `postgres` us
 
 Do not commit the `.env` file.
 
+Lab 3 adds these server variables (all have safe defaults except the
+migration-test database):
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `MIGRATION_TEST_DATABASE_URL` | — | A separate, disposable database the migration test wipes on every run. Never point it at real data. |
+| `CLIENT_ORIGIN` | `http://localhost:5173` | The only browser origin allowed to send the session cookie |
+| `SESSION_TTL_HOURS` | `8` | Session lifetime (absolute) |
+| `COOKIE_SECURE` | `false` | Set `true` when served over HTTPS |
+| `BCRYPT_COST` | `12` | bcrypt cost factor; below 10 is refused at startup |
+
+**Using `npx prisma dev` (local Prisma Postgres):** run it from `server/` and
+use the printed `DATABASE_URL`, adding `&connection_limit=1&pgbouncer=true` to
+the end. The embedded server shares one session between connections, so
+Prisma's prepared-statement cache must be switched off. Use the printed
+`SHADOW_DATABASE_URL`, with the same suffix, as `MIGRATION_TEST_DATABASE_URL`.
+
 ### Client
 
 If the client requires environment variables, copy the example file:
@@ -177,6 +194,39 @@ npx prisma migrate dev
 ```
 
 Do not run database commands against a database containing important data without checking the migration changes first.
+
+Then seed the reference data and development accounts:
+
+```bash
+npm run prisma:seed
+```
+
+The seed is idempotent. Every run resets the accounts below to the documented
+password and flags; accounts created in the app are never touched.
+
+### Development accounts (local development only)
+
+All seeded accounts share the password **`TokTickIT-Dev1!`**. It is a
+development fixture, not a secret — never use it anywhere real.
+
+| Email | Role | State |
+| --- | --- | --- |
+| `requester-a@example.com` | Requester | Active |
+| `requester-b@example.com` | Requester | Active |
+| `requester-c@example.com` | Requester | Active |
+| `requester-d@example.com` | Requester | Active, must change password at first login |
+| `requester-e@example.com` | Requester | Active, must change password at first login |
+| `inactive-requester@example.com` | Requester | Inactive |
+| `itstaff-1@example.com` … `itstaff-3@example.com` | IT Staff | Active |
+| `inactive-itstaff@example.com` | IT Staff | Inactive |
+| `admin@example.com` | Administrator | Active |
+| `inactive-admin@example.com` | Administrator | Inactive |
+
+Requester A–E and Inactive Requester are the Lab 2 Development Requesters,
+migrated into the `User` model with their ids and tickets intact.
+
+Passwords are stored only as bcrypt hashes. Five failed sign-ins for one email
+lock it for 15 minutes; the lock expires on its own (or restart the server).
 
 ## Running the Application
 
@@ -437,6 +487,10 @@ internal notes, and post-creation status changes.
 | Method   | Endpoint                                                                | Purpose                          |
 | -------- | ----------------------------------------------------------------------- | -------------------------------- |
 | `GET`    | `/api/health`                                                           | Service health check             |
+| `POST`   | `/api/auth/login`                                                       | Sign in (sets the session cookie) |
+| `POST`   | `/api/auth/logout`                                                      | Sign out (revokes the session)   |
+| `GET`    | `/api/auth/me`                                                          | The signed-in user               |
+| `POST`   | `/api/auth/change-password`                                             | Change the signed-in user's password |
 | `GET`    | `/api/categories`                                                       | Active categories                |
 | `GET`    | `/api/related-systems`                                                  | Active related systems           |
 | `GET`    | `/api/development-requesters`                                           | Active Development Requesters    |

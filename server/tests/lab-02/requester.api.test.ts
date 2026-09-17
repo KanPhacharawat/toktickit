@@ -29,8 +29,8 @@ describe("API-01 — active requesters endpoint (AC-01, AC-03)", () => {
   it("excludes inactive requesters (AC-03)", async () => {
     const prisma = getPrisma();
 
-    const inactive = await prisma.developmentRequester.findMany({
-      where: { isActive: false },
+    const inactive = await prisma.user.findMany({
+      where: { role: "Requester", isActive: false },
       select: { id: true },
     });
     // The seed includes an inactive requester so this assertion is meaningful.
@@ -46,8 +46,8 @@ describe("API-01 — active requesters endpoint (AC-01, AC-03)", () => {
 
   it("returns every active requester and nothing else", async () => {
     const activeIds = (
-      await getPrisma().developmentRequester.findMany({
-        where: { isActive: true, deletedAt: null },
+      await getPrisma().user.findMany({
+        where: { role: "Requester", isActive: true, deletedAt: null },
         select: { id: true },
         orderBy: { id: "asc" },
       })

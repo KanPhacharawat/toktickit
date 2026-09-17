@@ -207,8 +207,13 @@ ticketsRouter.post("/api/tickets", async (req: Request, res: Response) => {
   try {
     // 2. Reference data must exist AND be active (BR-16, BR-17).
     const [requester, category, relatedSystem] = await Promise.all([
-      prisma.developmentRequester.findFirst({
-        where: { id: input.requesterId, isActive: true, deletedAt: null },
+      prisma.user.findFirst({
+        where: {
+          id: input.requesterId,
+          role: "Requester",
+          isActive: true,
+          deletedAt: null,
+        },
         select: { id: true, name: true },
       }),
       prisma.category.findFirst({

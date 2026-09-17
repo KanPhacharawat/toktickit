@@ -12,6 +12,7 @@ import {
   gotoCreateTicket,
   gotoMyTickets,
   makePngFile,
+  openApp,
   openTicket,
   selectRequester,
   uniqueSummary,
@@ -85,7 +86,7 @@ for (const [name, size] of Object.entries(VIEWPORTS)) {
     // -----------------------------------------------------------------------
     // 1. Requester Selection
     // -----------------------------------------------------------------------
-    await page.goto("/");
+    await openApp(page);
     await expect(page.getByLabel(/development requester/i)).toBeVisible();
 
     await expectNoHorizontalScroll(page);

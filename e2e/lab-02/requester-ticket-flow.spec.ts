@@ -6,6 +6,7 @@ import {
   expectNoHorizontalScroll,
   gotoCreateTicket,
   gotoMyTickets,
+  E2E_LOGIN,
   makePngFile,
   openApp,
   openTicket,
@@ -157,6 +158,17 @@ test("E2E-03b — another requester's ticket cannot be fetched directly", async 
 
   const summary = uniqueSummary("direct access");
   const ticketNumber = await createTicket(page, summary);
+
+  // Lab 3 — these routes now require a session. This `request` fixture is a
+  // separate context from `page`'s browser cookies, so it signs in on its
+  // own; the login response's cookie is then sent automatically on every
+  // later call in this context. Which Requester logs in only has to pass the
+  // role gate — the ownership checks below are still keyed on the
+  // `:requesterId` path parameter, unchanged from Lab 2.
+  const login = await request.post("http://localhost:3000/api/auth/login", {
+    data: E2E_LOGIN,
+  });
+  expect(login.status()).toBe(200);
 
   // Find the owner's requester id and the ticket id from the owner's own list.
   const owned = await request.get("http://localhost:3000/api/development-requesters");

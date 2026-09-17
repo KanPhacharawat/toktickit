@@ -5,6 +5,7 @@ import { ticketsRouter } from "./tickets.js";
 import { attachmentsRouter } from "./attachments.js";
 import { authRouter } from "./auth/routes.js";
 import { bcryptCost } from "./auth/credentials.js";
+import { protect } from "./auth/middleware.js";
 // getPrisma() is your lazy database handle. Call it INSIDE a route when you
 // need the DB (Issue 4). It is intentionally unused until then.
 
@@ -15,10 +16,23 @@ bcryptCost();
 // Supertest can import `app` without opening a port. Do not merge these files.
 export const app = express();
 
-// Lab 3 BR-17 — the session cookie only travels with credentialed requests,
-// which browsers allow for one exact origin, never `*`.
+// Lab 3 BR-17 / api-spec §1.3 — the session cookie only travels with
+// credentialed requests, and only this one origin is ever allowed. A custom
+// origin function (rather than a static string) means a foreign Origin gets
+// no Access-Control-Allow-Origin header at all, instead of a mismatched one:
+// `*` is never returned either way.
 export const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN ?? "http://localhost:5173";
-app.use(cors({ origin: CLIENT_ORIGIN, credentials: true }));
+app.use(
+  cors({
+    origin(origin, callback) {
+      // No Origin header at all (server-to-server calls, curl, same-origin
+      // requests) is not a cross-origin browser request, so it is allowed.
+      if (!origin || origin === CLIENT_ORIGIN) return callback(null, true);
+      return callback(null, false);
+    },
+    credentials: true,
+  }),
+);
 app.use(express.json());
 
 // A malformed JSON body gets the documented envelope instead of Express's
@@ -58,8 +72,12 @@ app.get("/api/health", (_req: Request, res: Response) => {
 //   -> return each { id, name } in a predictable (id) order
 //   -> on failure, respond 500 with a safe message (no internal details)
 // TODO(Issue 4): implement the route here.
+//
+// Lab 3 — any authenticated, gated role may read reference data (matrix §5.1
+// "Categories, Related Systems": Yes for every role), so `protect()` takes no
+// role argument.
 // ---------------------------------------------------------------------------
-app.get("/api/categories", async (_req: Request, res: Response) => {
+app.get("/api/categories", ...protect(), async (_req: Request, res: Response) => {
   try {
     const categories = await getPrisma().category.findMany({
       // FR-30 — only active Categories are selectable on Create Ticket.
@@ -82,29 +100,38 @@ app.get("/api/categories", async (_req: Request, res: Response) => {
 //   -> FR-32/BR-05: active Development Requesters only.
 //   -> The selected Requester is the Lab 2 testing identity (BR-04). It is
 //      NOT authentication; Lab 3 replaces it with a real signed-in user.
+//
+// Lab 3 — this residual Lab 2 mechanism is Requester-facing only; it is
+// removed entirely by the Requester regression issue (FR-19). Until then it
+// is gated to the Requester role so it cannot be used to enumerate accounts
+// from another role.
 // ---------------------------------------------------------------------------
-app.get("/api/development-requesters", async (_req: Request, res: Response) => {
-  try {
-    const requesters = await getPrisma().user.findMany({
-      // Inactive and soft-removed Requesters never reach the selector (AC-03).
-      // Lab 3: Development Requesters now live in `User`; only the Requester
-      // role belongs in this Lab 2 selector until it is removed.
-      where: { role: "Requester", isActive: true, deletedAt: null },
-      select: { id: true, name: true, email: true, department: true },
-      orderBy: { id: "asc" },
-    });
-    res.status(200).json({ data: requesters });
-  } catch (err) {
-    console.error("GET /api/development-requesters failed:", err);
-    // BR-39 — safe message only, no internal details.
-    res.status(500).json({
-      error: {
-        code: "INTERNAL_ERROR",
-        message: "Failed to load development requesters.",
-      },
-    });
-  }
-});
+app.get(
+  "/api/development-requesters",
+  ...protect("Requester"),
+  async (_req: Request, res: Response) => {
+    try {
+      const requesters = await getPrisma().user.findMany({
+        // Inactive and soft-removed Requesters never reach the selector (AC-03).
+        // Lab 3: Development Requesters now live in `User`; only the Requester
+        // role belongs in this Lab 2 selector until it is removed.
+        where: { role: "Requester", isActive: true, deletedAt: null },
+        select: { id: true, name: true, email: true, department: true },
+        orderBy: { id: "asc" },
+      });
+      res.status(200).json({ data: requesters });
+    } catch (err) {
+      console.error("GET /api/development-requesters failed:", err);
+      // BR-39 — safe message only, no internal details.
+      res.status(500).json({
+        error: {
+          code: "INTERNAL_ERROR",
+          message: "Failed to load development requesters.",
+        },
+      });
+    }
+  },
+);
 
 // Lab 2 — Create Ticket and its reference data.
 app.use(ticketsRouter);

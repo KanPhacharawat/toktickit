@@ -3,6 +3,7 @@ import AppShell from "./AppShell.js";
 import { useAuth } from "./AuthContext.js";
 import ChangePassword from "./ChangePassword.js";
 import Login from "./Login.js";
+import RoleAvailability from "./RoleAvailability.js";
 
 /** Header for the mandatory password change: identity and Log Out only. */
 function MinimalHeader() {
@@ -73,6 +74,17 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     return (
       <AppShell>
         <ChangePassword mode="voluntary" />
+      </AppShell>
+    );
+  }
+
+  // `children` is the Requester ticketing app (Lab2App), and every one of
+  // its API calls is now gated to the Requester role (authorization
+  // middleware). A non-Requester lands here instead of a screen full of 403s.
+  if (auth.user.role !== "Requester") {
+    return (
+      <AppShell>
+        <RoleAvailability />
       </AppShell>
     );
   }

@@ -7,6 +7,7 @@ import {
   ticketNumberPrefixFor,
 } from "./ticketNumber.js";
 import { buildOrderBy, parseTicketListQuery } from "./ticketListQuery.js";
+import { protect } from "./auth/middleware.js";
 
 export const ticketsRouter = Router();
 
@@ -156,9 +157,14 @@ async function handleTicketList(
 
 // ---------------------------------------------------------------------------
 // GET /api/requesters/:requesterId/tickets — the documented My Tickets list.
+//
+// Lab 3 — Requester role only (matrix §5.1 "My Tickets"). Ownership is still
+// keyed on the `:requesterId` path parameter here, unchanged from Lab 2; the
+// Requester regression issue rewires it to the authenticated identity (BR-03).
 // ---------------------------------------------------------------------------
 ticketsRouter.get(
   "/api/requesters/:requesterId/tickets",
+  ...protect("Requester"),
   async (req: Request, res: Response) =>
     handleTicketList(req.params.requesterId, req.query, res),
 );
@@ -166,21 +172,28 @@ ticketsRouter.get(
 // ---------------------------------------------------------------------------
 // GET /api/tickets?requesterId=... — same list, requester supplied as a query
 // parameter. Ownership is still mandatory: without a requester there is no
-// list to return (BR-06, BR-08).
+// list to return (BR-06, BR-08). Lab 3 — Requester role only.
 // ---------------------------------------------------------------------------
-ticketsRouter.get("/api/tickets", async (req: Request, res: Response) => {
-  const { requesterId, ...rest } = req.query;
-  return handleTicketList(
-    typeof requesterId === "string" ? requesterId : undefined,
-    rest,
-    res,
-  );
-});
+ticketsRouter.get(
+  "/api/tickets",
+  ...protect("Requester"),
+  async (req: Request, res: Response) => {
+    const { requesterId, ...rest } = req.query;
+    return handleTicketList(
+      typeof requesterId === "string" ? requesterId : undefined,
+      rest,
+      res,
+    );
+  },
+);
 
 // ---------------------------------------------------------------------------
 // FR-31 — active Related Systems for the Create Ticket reference data.
+//
+// Lab 3 — any authenticated, gated role (matrix §5.1 "Categories, Related
+// Systems").
 // ---------------------------------------------------------------------------
-ticketsRouter.get("/api/related-systems", async (_req, res) => {
+ticketsRouter.get("/api/related-systems", ...protect(), async (_req, res) => {
   try {
     const relatedSystems = await getPrisma().relatedSystem.findMany({
       where: { isActive: true, deletedAt: null },
@@ -196,8 +209,12 @@ ticketsRouter.get("/api/related-systems", async (_req, res) => {
 
 // ---------------------------------------------------------------------------
 // POST /api/tickets — create one Ticket (api-spec.md §6).
+//
+// Lab 3 — Requester role only (matrix §5.1 "Create Ticket"). The body still
+// carries `requesterId` exactly as in Lab 2; the Requester regression issue
+// switches ownership to the authenticated identity and ignores it (BR-03).
 // ---------------------------------------------------------------------------
-ticketsRouter.post("/api/tickets", async (req: Request, res: Response) => {
+ticketsRouter.post("/api/tickets", ...protect("Requester"), async (req: Request, res: Response) => {
   // 1. Shape and content validation, independent of the frontend (BR-19).
   const { input, fieldErrors } = validateCreateTicketBody(req.body);
   if (!input) return validationError(res, fieldErrors);

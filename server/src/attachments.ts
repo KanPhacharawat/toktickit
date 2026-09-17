@@ -12,6 +12,7 @@ import {
   safeDisplayFilename,
   validateRemovalReason,
 } from "./attachmentPolicy.js";
+import { protect } from "./auth/middleware.js";
 
 export const attachmentsRouter = Router();
 
@@ -127,9 +128,16 @@ async function requireOwnedTicket(
 
 // ---------------------------------------------------------------------------
 // GET /api/requesters/:requesterId/tickets/:ticketId — Ticket Detail (§8)
+//
+// Lab 3 — Requester role only. `requireOwnedTicket` still checks the
+// `:requesterId` path parameter, unchanged from Lab 2, so this stays scoped
+// to Requester until the Requester regression issue rewires ownership to the
+// authenticated identity and IT Staff Ticket operations adds the staff-facing
+// route (matrix §5.1 "Ticket Detail": Own for Requester, All for staff).
 // ---------------------------------------------------------------------------
 attachmentsRouter.get(
   "/api/requesters/:requesterId/tickets/:ticketId",
+  ...protect("Requester"),
   async (req: Request, res: Response) => {
     try {
       const owned = await requireOwnedTicket(req, res);
@@ -171,10 +179,11 @@ attachmentsRouter.get(
 );
 
 // ---------------------------------------------------------------------------
-// GET .../attachments — Attachment metadata (§10)
+// GET .../attachments — Attachment metadata (§10). Lab 3 — Requester role only.
 // ---------------------------------------------------------------------------
 attachmentsRouter.get(
   "/api/requesters/:requesterId/tickets/:ticketId/attachments",
+  ...protect("Requester"),
   async (req: Request, res: Response) => {
     try {
       const owned = await requireOwnedTicket(req, res);
@@ -196,10 +205,13 @@ attachmentsRouter.get(
 );
 
 // ---------------------------------------------------------------------------
-// POST .../attachments — upload one Attachment (§9)
+// POST .../attachments — upload one Attachment (§9). Lab 3 — Requester role
+// only (matrix §5.1 "Attachment upload, soft removal": Own for Requester,
+// No for IT Staff/Administrator).
 // ---------------------------------------------------------------------------
 attachmentsRouter.post(
   "/api/requesters/:requesterId/tickets/:ticketId/attachments",
+  ...protect("Requester"),
   (req: Request, res: Response) => {
     upload.single("file")(req, res, async (uploadErr: unknown) => {
       // BR-30 — multer aborts the stream once the limit is passed.
@@ -310,10 +322,12 @@ attachmentsRouter.post(
 );
 
 // ---------------------------------------------------------------------------
-// GET .../attachments/:attachmentId — download an active Attachment (§11)
+// GET .../attachments/:attachmentId — download an active Attachment (§11).
+// Lab 3 — Requester role only.
 // ---------------------------------------------------------------------------
 attachmentsRouter.get(
   "/api/requesters/:requesterId/tickets/:ticketId/attachments/:attachmentId",
+  ...protect("Requester"),
   async (req: Request, res: Response) => {
     try {
       const owned = await requireOwnedTicket(req, res);
@@ -383,10 +397,12 @@ attachmentsRouter.get(
 );
 
 // ---------------------------------------------------------------------------
-// DELETE .../attachments/:attachmentId — soft removal (§12)
+// DELETE .../attachments/:attachmentId — soft removal (§12). Lab 3 —
+// Requester role only.
 // ---------------------------------------------------------------------------
 attachmentsRouter.delete(
   "/api/requesters/:requesterId/tickets/:ticketId/attachments/:attachmentId",
+  ...protect("Requester"),
   async (req: Request, res: Response) => {
     try {
       const owned = await requireOwnedTicket(req, res);

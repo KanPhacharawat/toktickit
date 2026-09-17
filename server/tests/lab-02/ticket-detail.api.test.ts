@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, vi } from "vitest";
-import request from "supertest";
+﻿import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, vi } from "vitest";
 import { app } from "../../src/app.js";
 import { getPrisma } from "../../src/prisma.js";
+import { loginAgent, type AuthedAgent } from "../authHelper.js";
 
-// API-07 — Cross-requester detail (AC-12).
+// API-07 â€” Cross-requester detail (AC-12).
 // "Ticket owned by another Requester is not returned."
 //
 // Integration test: needs the database migrated and seeded first.
@@ -19,6 +19,9 @@ let ownerId: number;
 let otherId: number;
 let ownedTicketId: number;
 let foreignTicketId: number;
+// Lab 3 â€” this route is gated to the Requester role. The login identity is
+// unrelated to `ownerId`/`otherId`, unchanged from Lab 2.
+let agent: AuthedAgent;
 
 const detailUrl = (requesterId: number, ticketId: number) =>
   `/api/requesters/${requesterId}/tickets/${ticketId}`;
@@ -72,6 +75,7 @@ beforeEach(async () => {
   await removeFixtures();
   ownedTicketId = await createTicketFor(ownerId, "Owned ticket");
   foreignTicketId = await createTicketFor(otherId, "Foreign ticket");
+  agent ??= await loginAgent(app);
 });
 
 afterEach(() => {
@@ -87,11 +91,11 @@ afterAll(async () => {
 });
 
 // ---------------------------------------------------------------------------
-// API-07 — the owner's own ticket is returned in full
+// API-07 â€” the owner's own ticket is returned in full
 // ---------------------------------------------------------------------------
-describe("API-07 — GET ticket detail for the owner", () => {
+describe("API-07 â€” GET ticket detail for the owner", () => {
   it("returns the complete read-only representation (AC-12)", async () => {
-    const res = await request(app).get(detailUrl(ownerId, ownedTicketId));
+    const res = await agent.get(detailUrl(ownerId, ownedTicketId));
 
     expect(res.status).toBe(200);
     expect(res.body.data.id).toBe(ownedTicketId);
@@ -114,17 +118,17 @@ describe("API-07 — GET ticket detail for the owner", () => {
   });
 
   it("includes the attachment metadata collection", async () => {
-    const res = await request(app).get(detailUrl(ownerId, ownedTicketId));
+    const res = await agent.get(detailUrl(ownerId, ownedTicketId));
     expect(Array.isArray(res.body.data.attachments)).toBe(true);
   });
 });
 
 // ---------------------------------------------------------------------------
-// API-07 — a ticket owned by another requester is not returned (AC-12, BR-09)
+// API-07 â€” a ticket owned by another requester is not returned (AC-12, BR-09)
 // ---------------------------------------------------------------------------
-describe("API-07 — cross-requester detail protection", () => {
+describe("API-07 â€” cross-requester detail protection", () => {
   it("does not return a ticket owned by another requester (AC-12)", async () => {
-    const res = await request(app).get(detailUrl(ownerId, foreignTicketId));
+    const res = await agent.get(detailUrl(ownerId, foreignTicketId));
 
     expect(res.status).toBe(403);
     // No ticket payload is returned at all.
@@ -132,7 +136,7 @@ describe("API-07 — cross-requester detail protection", () => {
   });
 
   it("reveals nothing about the real owner (BR-09)", async () => {
-    const res = await request(app).get(detailUrl(ownerId, foreignTicketId));
+    const res = await agent.get(detailUrl(ownerId, foreignTicketId));
     const serialized = JSON.stringify(res.body);
 
     expect(serialized).not.toMatch(/Detail Other Person/);
@@ -143,15 +147,15 @@ describe("API-07 — cross-requester detail protection", () => {
   });
 
   it("is symmetric: the other requester cannot read the owner's ticket", async () => {
-    const res = await request(app).get(detailUrl(otherId, ownedTicketId));
+    const res = await agent.get(detailUrl(otherId, ownedTicketId));
 
     expect(res.status).toBe(403);
     expect(JSON.stringify(res.body)).not.toMatch(/Owned ticket/);
   });
 
   it("still returns each requester their own ticket", async () => {
-    const mine = await request(app).get(detailUrl(ownerId, ownedTicketId));
-    const theirs = await request(app).get(detailUrl(otherId, foreignTicketId));
+    const mine = await agent.get(detailUrl(ownerId, ownedTicketId));
+    const theirs = await agent.get(detailUrl(otherId, foreignTicketId));
 
     expect(mine.status).toBe(200);
     expect(theirs.status).toBe(200);
@@ -160,15 +164,15 @@ describe("API-07 — cross-requester detail protection", () => {
   });
 
   it("returns 404 when the ticket does not exist", async () => {
-    const res = await request(app).get(detailUrl(ownerId, 99999999));
+    const res = await agent.get(detailUrl(ownerId, 99999999));
 
     expect(res.status).toBe(404);
     expect(res.body.data).toBeUndefined();
   });
 
   it("rejects a malformed requester or ticket id with 400", async () => {
-    expect((await request(app).get("/api/requesters/abc/tickets/1")).status).toBe(400);
-    expect((await request(app).get(`/api/requesters/${ownerId}/tickets/abc`)).status).toBe(400);
+    expect((await agent.get("/api/requesters/abc/tickets/1")).status).toBe(400);
+    expect((await agent.get(`/api/requesters/${ownerId}/tickets/abc`)).status).toBe(400);
   });
 
   it("returns a safe 500 without leaking internals (BR-39)", async () => {
@@ -177,7 +181,7 @@ describe("API-07 — cross-requester detail protection", () => {
       new Error('Invalid `prisma.ticket.findFirst()` at C:\\repo\\server\\src\\attachments.ts:120'),
     );
 
-    const res = await request(app).get(detailUrl(ownerId, ownedTicketId));
+    const res = await agent.get(detailUrl(ownerId, ownedTicketId));
 
     expect(res.status).toBe(500);
     const serialized = JSON.stringify(res.body);

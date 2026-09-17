@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
-import request from "supertest";
+﻿import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
+import { loginAgent, type AuthedAgent } from "../authHelper.js";
 
 // The upload directory is read at import time, so point it at a throwaway
 // directory before the router loads.
@@ -17,6 +17,9 @@ const { MAX_ACTIVE_ATTACHMENTS, MAX_FILE_SIZE_BYTES, isPermittedFile, generateSt
   await import("../../src/attachmentPolicy.js");
 
 const prisma = getPrisma();
+// Lab 3 â€” every route in this file is gated to the Requester role. The login
+// identity is unrelated to `ownerId`/`otherId`, unchanged from Lab 2.
+let agent: AuthedAgent;
 
 /** Marks every row this suite creates so cleanup never touches other data. */
 const TAG = "[attachment-test]";
@@ -43,7 +46,7 @@ function uploadTo(
     contentType?: string;
   } = {},
 ) {
-  return request(app)
+  return agent
     .post(`/api/requesters/${requesterId}/tickets/${ticketId}/attachments`)
     .attach("file", options.buffer ?? PNG_BYTES, {
       filename: options.filename ?? "screenshot.png",
@@ -99,6 +102,8 @@ beforeAll(async () => {
   ownerId = owner.id;
   otherId = other.id;
   await removeFixtures();
+
+  agent = await loginAgent(app);
 });
 
 beforeEach(async () => {
@@ -121,9 +126,9 @@ afterAll(async () => {
 });
 
 // ---------------------------------------------------------------------------
-// UNIT-04 — policy rules
+// UNIT-04 â€” policy rules
 // ---------------------------------------------------------------------------
-describe("UNIT-04 — attachment validation rules (BR-29–31)", () => {
+describe("UNIT-04 â€” attachment validation rules (BR-29â€“31)", () => {
   it("permits each documented type with a matching extension (BR-29)", () => {
     expect(isPermittedFile("image/jpeg", "photo.jpg")).toBe(true);
     expect(isPermittedFile("image/jpeg", "photo.jpeg")).toBe(true);
@@ -166,9 +171,9 @@ describe("UNIT-04 — attachment validation rules (BR-29–31)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// API-12 / API-13 — upload (AC-18, AC-19)
+// API-12 / API-13 â€” upload (AC-18, AC-19)
 // ---------------------------------------------------------------------------
-describe("API-12 / API-13 — attachment upload (AC-18, AC-19)", () => {
+describe("API-12 / API-13 â€” attachment upload (AC-18, AC-19)", () => {
   it("stores a permitted attachment and returns its metadata (AC-19)", async () => {
     const res = await uploadTo(ownerId, ownedTicketId);
 
@@ -181,7 +186,7 @@ describe("API-12 / API-13 — attachment upload (AC-18, AC-19)", () => {
       removalReason: null,
     });
     expect(res.body.data.uploadedAt).toBeDefined();
-    // BR-33 — the storage key is never exposed to the client.
+    // BR-33 â€” the storage key is never exposed to the client.
     expect(res.body.data.storageKey).toBeUndefined();
   });
 
@@ -209,7 +214,7 @@ describe("API-12 / API-13 — attachment upload (AC-18, AC-19)", () => {
       const res = await uploadTo(ownerId, ownedTicketId, { filename, contentType });
       expect(res.status).toBe(201);
       // Free the slot for the next type (limit is five).
-      await request(app)
+      await agent
         .delete(itemUrl(ownerId, ownedTicketId, res.body.data.id))
         .send({ removalReason: "Cycling through types" });
     }
@@ -284,7 +289,7 @@ describe("API-12 / API-13 — attachment upload (AC-18, AC-19)", () => {
     }
     expect((await uploadTo(ownerId, ownedTicketId, { filename: "sixth.png" })).status).toBe(409);
 
-    await request(app)
+    await agent
       .delete(itemUrl(ownerId, ownedTicketId, ids[0]))
       .send({ removalReason: "Making room" });
 
@@ -305,7 +310,7 @@ describe("API-12 / API-13 — attachment upload (AC-18, AC-19)", () => {
   });
 
   it("rejects a request with no file", async () => {
-    const res = await request(app).post(listUrl(ownerId, ownedTicketId));
+    const res = await agent.post(listUrl(ownerId, ownedTicketId));
     expect(res.status).toBe(400);
   });
 
@@ -320,14 +325,14 @@ describe("API-12 / API-13 — attachment upload (AC-18, AC-19)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// GET metadata (§10)
+// GET metadata (Â§10)
 // ---------------------------------------------------------------------------
-describe("API-14 — attachment metadata after soft removal (AC-20)", () => {
+describe("API-14 â€” attachment metadata after soft removal (AC-20)", () => {
   it("lists metadata for an owned ticket", async () => {
     await uploadTo(ownerId, ownedTicketId, { filename: "one.png" });
     await uploadTo(ownerId, ownedTicketId, { filename: "two.pdf", contentType: "application/pdf" });
 
-    const res = await request(app).get(listUrl(ownerId, ownedTicketId));
+    const res = await agent.get(listUrl(ownerId, ownedTicketId));
 
     expect(res.status).toBe(200);
     expect(res.body.data).toHaveLength(2);
@@ -340,17 +345,17 @@ describe("API-14 — attachment metadata after soft removal (AC-20)", () => {
       "removedAt",
       "uploadedAt",
     ]);
-    // BR-33 — the storage key never leaves the server.
+    // BR-33 â€” the storage key never leaves the server.
     expect(JSON.stringify(res.body)).not.toMatch(/storageKey/);
   });
 
   it("keeps removed attachments in the metadata response (BR-38)", async () => {
     const uploaded = await uploadTo(ownerId, ownedTicketId);
-    await request(app)
+    await agent
       .delete(itemUrl(ownerId, ownedTicketId, uploaded.body.data.id))
       .send({ removalReason: "No longer needed" });
 
-    const res = await request(app).get(listUrl(ownerId, ownedTicketId));
+    const res = await agent.get(listUrl(ownerId, ownedTicketId));
 
     expect(res.body.data).toHaveLength(1);
     expect(res.body.data[0].removedAt).not.toBeNull();
@@ -358,19 +363,19 @@ describe("API-14 — attachment metadata after soft removal (AC-20)", () => {
   });
 
   it("rejects metadata access for another requester's ticket (AC-22)", async () => {
-    const res = await request(app).get(listUrl(ownerId, foreignTicketId));
+    const res = await agent.get(listUrl(ownerId, foreignTicketId));
     expect(res.status).toBe(403);
   });
 });
 
 // ---------------------------------------------------------------------------
-// API-15 — download (AC-21)
+// API-15 â€” download (AC-21)
 // ---------------------------------------------------------------------------
-describe("API-15 / API-16 — download protection and ownership (AC-21, AC-22)", () => {
+describe("API-15 / API-16 â€” download protection and ownership (AC-21, AC-22)", () => {
   it("returns the file with its stored MIME type", async () => {
     const uploaded = await uploadTo(ownerId, ownedTicketId);
 
-    const res = await request(app)
+    const res = await agent
       .get(itemUrl(ownerId, ownedTicketId, uploaded.body.data.id))
       .buffer(true)
       .parse((r, cb) => {
@@ -387,11 +392,11 @@ describe("API-15 / API-16 — download protection and ownership (AC-21, AC-22)",
 
   it("refuses to download a removed attachment with 410 (AC-21)", async () => {
     const uploaded = await uploadTo(ownerId, ownedTicketId);
-    await request(app)
+    await agent
       .delete(itemUrl(ownerId, ownedTicketId, uploaded.body.data.id))
       .send({ removalReason: "Duplicate screenshot" });
 
-    const res = await request(app).get(
+    const res = await agent.get(
       itemUrl(ownerId, ownedTicketId, uploaded.body.data.id),
     );
 
@@ -404,7 +409,7 @@ describe("API-15 / API-16 — download protection and ownership (AC-21, AC-22)",
   it("rejects a download from another requester with 403 (AC-22)", async () => {
     const uploaded = await uploadTo(ownerId, ownedTicketId);
 
-    const res = await request(app).get(
+    const res = await agent.get(
       itemUrl(otherId, ownedTicketId, uploaded.body.data.id),
     );
 
@@ -416,7 +421,7 @@ describe("API-15 / API-16 — download protection and ownership (AC-21, AC-22)",
     const uploaded = await uploadTo(ownerId, ownedTicketId);
     const secondTicket = await createTicketFor(ownerId, "Second owned ticket");
 
-    const res = await request(app).get(
+    const res = await agent.get(
       itemUrl(ownerId, secondTicket, uploaded.body.data.id),
     );
 
@@ -432,24 +437,24 @@ describe("API-15 / API-16 — download protection and ownership (AC-21, AC-22)",
     });
     await fs.unlink(path.join(TEST_UPLOAD_DIR, stored.storageKey));
 
-    const res = await request(app).get(
+    const res = await agent.get(
       itemUrl(ownerId, ownedTicketId, uploaded.body.data.id),
     );
 
     expect(res.status).toBe(404);
-    // BR-39 — no filesystem path leaks to the client.
+    // BR-39 â€” no filesystem path leaks to the client.
     expect(JSON.stringify(res.body)).not.toMatch(/[A-Za-z]:\\|\/tmp\/|uploads/);
   });
 });
 
 // ---------------------------------------------------------------------------
-// API-14 — soft removal (AC-20)
+// API-14 â€” soft removal (AC-20)
 // ---------------------------------------------------------------------------
-describe("API-14 — soft removal (AC-20)", () => {
+describe("API-14 â€” soft removal (AC-20)", () => {
   it("sets the removal state and keeps the metadata row (AC-20, BR-36)", async () => {
     const uploaded = await uploadTo(ownerId, ownedTicketId);
 
-    const res = await request(app)
+    const res = await agent
       .delete(itemUrl(ownerId, ownedTicketId, uploaded.body.data.id))
       .send({ removalReason: "Duplicate screenshot" });
 
@@ -460,7 +465,7 @@ describe("API-14 — soft removal (AC-20)", () => {
     });
     expect(res.body.data.removedAt).not.toBeNull();
 
-    // The row is still there — this is soft removal, not deletion.
+    // The row is still there â€” this is soft removal, not deletion.
     const stored = await prisma.attachment.findUnique({
       where: { id: uploaded.body.data.id },
     });
@@ -473,7 +478,7 @@ describe("API-14 — soft removal (AC-20)", () => {
     const uploaded = await uploadTo(ownerId, ownedTicketId);
 
     for (const body of [{}, { removalReason: "" }, { removalReason: "   " }]) {
-      const res = await request(app)
+      const res = await agent
         .delete(itemUrl(ownerId, ownedTicketId, uploaded.body.data.id))
         .send(body);
 
@@ -491,7 +496,7 @@ describe("API-14 — soft removal (AC-20)", () => {
   it("trims the removal reason", async () => {
     const uploaded = await uploadTo(ownerId, ownedTicketId);
 
-    const res = await request(app)
+    const res = await agent
       .delete(itemUrl(ownerId, ownedTicketId, uploaded.body.data.id))
       .send({ removalReason: "   Duplicate   " });
 
@@ -501,7 +506,7 @@ describe("API-14 — soft removal (AC-20)", () => {
   it("rejects removal by another requester with 403 (AC-22)", async () => {
     const uploaded = await uploadTo(ownerId, ownedTicketId);
 
-    const res = await request(app)
+    const res = await agent
       .delete(itemUrl(otherId, ownedTicketId, uploaded.body.data.id))
       .send({ removalReason: "Not mine to remove" });
 
@@ -513,7 +518,7 @@ describe("API-14 — soft removal (AC-20)", () => {
   });
 
   it("returns 404 for an attachment that does not exist", async () => {
-    const res = await request(app)
+    const res = await agent
       .delete(itemUrl(ownerId, ownedTicketId, 99999999))
       .send({ removalReason: "Does not exist" });
 
@@ -524,8 +529,8 @@ describe("API-14 — soft removal (AC-20)", () => {
     const uploaded = await uploadTo(ownerId, ownedTicketId);
     const url = itemUrl(ownerId, ownedTicketId, uploaded.body.data.id);
 
-    await request(app).delete(url).send({ removalReason: "First removal" });
-    const second = await request(app)
+    await agent.delete(url).send({ removalReason: "First removal" });
+    const second = await agent
       .delete(url)
       .send({ removalReason: "Second removal" });
 
@@ -539,16 +544,16 @@ describe("API-14 — soft removal (AC-20)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// AC-23 / BR-39 — unexpected failures stay safe
+// AC-23 / BR-39 â€” unexpected failures stay safe
 // ---------------------------------------------------------------------------
-describe("API-12–16 — attachment failures stay safe (AC-23)", () => {
+describe("API-12â€“16 â€” attachment failures stay safe (AC-23)", () => {
   it("returns a safe 500 without leaking internals", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(prisma.attachment, "findMany").mockRejectedValue(
       new Error('Invalid `prisma.attachment.findMany()` at C:\\repo\\server\\src\\attachments.ts:180'),
     );
 
-    const res = await request(app).get(listUrl(ownerId, ownedTicketId));
+    const res = await agent.get(listUrl(ownerId, ownedTicketId));
 
     expect(res.status).toBe(500);
     const serialized = JSON.stringify(res.body);

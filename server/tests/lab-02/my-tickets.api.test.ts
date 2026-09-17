@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeAll, afterAll, vi, afterEach } from "vitest";
-import request from "supertest";
+﻿import { describe, it, expect, beforeAll, afterAll, vi, afterEach } from "vitest";
 import { app } from "../../src/app.js";
 import { getPrisma } from "../../src/prisma.js";
+import { loginAgent, type AuthedAgent } from "../authHelper.js";
 import {
   parseTicketListQuery,
   DEFAULT_PAGE_SIZE,
@@ -21,6 +21,11 @@ let otherId: number;
 let categoryA: number;
 let categoryB: number;
 let systemId: number;
+// Lab 3 â€” these routes are gated to the Requester role. The login identity
+// is unrelated to `ownerId`/`otherId`, the fixture rows this suite tests
+// data ownership against (still keyed on the `:requesterId` path parameter,
+// unchanged from Lab 2).
+let agent: AuthedAgent;
 
 interface ListRow {
   id: number;
@@ -113,7 +118,7 @@ beforeAll(async () => {
     });
   }
 
-  // One ticket owned by a different requester — it must never appear.
+  // One ticket owned by a different requester â€” it must never appear.
   await prisma.ticket.create({
     data: {
       ticketNumber: "TT-20260901-9999",
@@ -125,6 +130,8 @@ beforeAll(async () => {
       requestedPriority: "LOW",
     },
   });
+
+  agent = await loginAgent(app);
 });
 
 afterEach(() => {
@@ -140,9 +147,9 @@ afterAll(async () => {
 });
 
 // ---------------------------------------------------------------------------
-// Query parsing — unit coverage (BR-25, BR-26)
+// Query parsing â€” unit coverage (BR-25, BR-26)
 // ---------------------------------------------------------------------------
-describe("API-11 — ticket list query validation (BR-25, BR-26)", () => {
+describe("API-11 â€” ticket list query validation (BR-25, BR-26)", () => {
   it("applies the documented defaults (BR-24)", () => {
     const { query } = parseTicketListQuery({});
     expect(query).toMatchObject({
@@ -199,11 +206,11 @@ describe("API-11 — ticket list query validation (BR-25, BR-26)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// API-06 — ownership (AC-11)
+// API-06 â€” ownership (AC-11)
 // ---------------------------------------------------------------------------
-describe("API-06 — requester ownership list (AC-11)", () => {
+describe("API-06 â€” requester ownership list (AC-11)", () => {
   it("returns only tickets owned by the requester", async () => {
-    const res = await request(app).get(listUrl(ownerId)).query({ pageSize: 50 });
+    const res = await agent.get(listUrl(ownerId)).query({ pageSize: 50 });
 
     expect(res.status).toBe(200);
     const numbers = res.body.data.map((t: ListRow) => t.ticketNumber);
@@ -212,7 +219,7 @@ describe("API-06 — requester ownership list (AC-11)", () => {
   });
 
   it("does not leak the owner's tickets to another requester", async () => {
-    const res = await request(app).get(listUrl(otherId)).query({ pageSize: 50 });
+    const res = await agent.get(listUrl(otherId)).query({ pageSize: 50 });
 
     const numbers = res.body.data.map((t: ListRow) => t.ticketNumber);
     expect(numbers).toContain("TT-20260901-9999");
@@ -222,7 +229,7 @@ describe("API-06 — requester ownership list (AC-11)", () => {
   });
 
   it("returns an empty page for a requester with no tickets", async () => {
-    const res = await request(app).get(listUrl(999999));
+    const res = await agent.get(listUrl(999999));
 
     expect(res.status).toBe(200);
     expect(res.body.data).toEqual([]);
@@ -230,13 +237,13 @@ describe("API-06 — requester ownership list (AC-11)", () => {
   });
 
   it("rejects a non-numeric requester id", async () => {
-    const res = await request(app).get("/api/requesters/abc/tickets");
+    const res = await agent.get("/api/requesters/abc/tickets");
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("returns the documented row shape", async () => {
-    const res = await request(app).get(listUrl(ownerId));
+    const res = await agent.get(listUrl(ownerId));
 
     expect(Object.keys(res.body.data[0]).sort()).toEqual([
       "category",
@@ -253,11 +260,11 @@ describe("API-06 — requester ownership list (AC-11)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// API-08 — search (AC-13)
+// API-08 â€” search (AC-13)
 // ---------------------------------------------------------------------------
-describe("API-08 — ticket search (AC-13)", () => {
+describe("API-08 â€” ticket search (AC-13)", () => {
   it("matches the ticket summary", async () => {
-    const res = await request(app).get(listUrl(ownerId)).query({ search: "Printer" });
+    const res = await agent.get(listUrl(ownerId)).query({ search: "Printer" });
 
     const summaries = res.body.data.map((t: ListRow) => t.summary);
     expect(summaries).toHaveLength(2);
@@ -265,15 +272,15 @@ describe("API-08 — ticket search (AC-13)", () => {
   });
 
   it("matches the ticket number", async () => {
-    const res = await request(app).get(listUrl(ownerId)).query({ search: "TT-20260901-0002" });
+    const res = await agent.get(listUrl(ownerId)).query({ search: "TT-20260901-0002" });
 
     expect(res.body.data).toHaveLength(1);
     expect(res.body.data[0].ticketNumber).toBe("TT-20260901-0002");
   });
 
   it("is case-insensitive", async () => {
-    const lower = await request(app).get(listUrl(ownerId)).query({ search: "printer" });
-    const upper = await request(app).get(listUrl(ownerId)).query({ search: "PRINTER" });
+    const lower = await agent.get(listUrl(ownerId)).query({ search: "printer" });
+    const upper = await agent.get(listUrl(ownerId)).query({ search: "PRINTER" });
 
     expect(lower.body.meta.totalItems).toBe(upper.body.meta.totalItems);
     expect(upper.body.meta.totalItems).toBe(2);
@@ -281,12 +288,12 @@ describe("API-08 — ticket search (AC-13)", () => {
 
   it("stays inside the owner scope", async () => {
     // "Other requester ticket" exists, but not for this owner.
-    const res = await request(app).get(listUrl(ownerId)).query({ search: "Other requester" });
+    const res = await agent.get(listUrl(ownerId)).query({ search: "Other requester" });
     expect(res.body.data).toHaveLength(0);
   });
 
   it("returns an empty page when nothing matches (BR-27)", async () => {
-    const res = await request(app)
+    const res = await agent
       .get(listUrl(ownerId))
       .query({ search: "nothing-matches-this-term" });
 
@@ -297,11 +304,11 @@ describe("API-08 — ticket search (AC-13)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// API-09 — filters (AC-14)
+// API-09 â€” filters (AC-14)
 // ---------------------------------------------------------------------------
-describe("API-09 — ticket filters (AC-14)", () => {
+describe("API-09 â€” ticket filters (AC-14)", () => {
   it("filters by requested priority", async () => {
-    const res = await request(app).get(listUrl(ownerId)).query({ requestedPriority: "LOW" });
+    const res = await agent.get(listUrl(ownerId)).query({ requestedPriority: "LOW" });
 
     expect(res.body.data).toHaveLength(2);
     expect(
@@ -310,21 +317,21 @@ describe("API-09 — ticket filters (AC-14)", () => {
   });
 
   it("filters by current status", async () => {
-    const res = await request(app).get(listUrl(ownerId)).query({ currentStatus: "New" });
+    const res = await agent.get(listUrl(ownerId)).query({ currentStatus: "New" });
 
     expect(res.body.data).toHaveLength(3);
     expect(res.body.data.every((t: ListRow) => t.currentStatus === "New")).toBe(true);
   });
 
   it("filters by category", async () => {
-    const res = await request(app).get(listUrl(ownerId)).query({ categoryId: categoryB });
+    const res = await agent.get(listUrl(ownerId)).query({ categoryId: categoryB });
 
     // Fixtures at odd indexes use category B.
     expect(res.body.data).toHaveLength(2);
   });
 
   it("combines filters and search", async () => {
-    const res = await request(app)
+    const res = await agent
       .get(listUrl(ownerId))
       .query({ search: "Printer", requestedPriority: "LOW" });
 
@@ -332,7 +339,7 @@ describe("API-09 — ticket filters (AC-14)", () => {
   });
 
   it("returns nothing when filters exclude every ticket", async () => {
-    const res = await request(app)
+    const res = await agent
       .get(listUrl(ownerId))
       .query({ requestedPriority: "URGENT", currentStatus: "New" });
 
@@ -341,7 +348,7 @@ describe("API-09 — ticket filters (AC-14)", () => {
   });
 
   it("rejects an invalid filter value with 400", async () => {
-    const res = await request(app)
+    const res = await agent
       .get(listUrl(ownerId))
       .query({ requestedPriority: "CRITICAL" });
 
@@ -351,11 +358,11 @@ describe("API-09 — ticket filters (AC-14)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// API-10 — sorting (AC-15)
+// API-10 â€” sorting (AC-15)
 // ---------------------------------------------------------------------------
-describe("API-10 — ticket sorting (AC-15)", () => {
+describe("API-10 â€” ticket sorting (AC-15)", () => {
   it("defaults to last updated descending (BR-24)", async () => {
-    const res = await request(app).get(listUrl(ownerId)).query({ pageSize: 50 });
+    const res = await agent.get(listUrl(ownerId)).query({ pageSize: 50 });
 
     const updated = res.body.data.map((t: ListRow) => new Date(t.updatedAt).getTime());
     expect(updated).toEqual([...updated].sort((a, b) => b - a));
@@ -364,10 +371,10 @@ describe("API-10 — ticket sorting (AC-15)", () => {
   });
 
   it("sorts by ticket number in both directions", async () => {
-    const asc = await request(app)
+    const asc = await agent
       .get(listUrl(ownerId))
       .query({ sortBy: "ticketNumber", sortOrder: "asc", pageSize: 50 });
-    const desc = await request(app)
+    const desc = await agent
       .get(listUrl(ownerId))
       .query({ sortBy: "ticketNumber", sortOrder: "desc", pageSize: 50 });
 
@@ -379,7 +386,7 @@ describe("API-10 — ticket sorting (AC-15)", () => {
   });
 
   it("sorts by ticket date ascending", async () => {
-    const res = await request(app)
+    const res = await agent
       .get(listUrl(ownerId))
       .query({ sortBy: "ticketDate", sortOrder: "asc", pageSize: 50 });
 
@@ -397,7 +404,7 @@ describe("API-10 — ticket sorting (AC-15)", () => {
       data: { updatedAt: shared },
     });
 
-    const res = await request(app).get(listUrl(ownerId)).query({ pageSize: 50 });
+    const res = await agent.get(listUrl(ownerId)).query({ pageSize: 50 });
     const numbers = res.body.data.map((t: ListRow) => t.ticketNumber);
 
     expect(numbers[0]).toBe("TT-20260901-0002");
@@ -416,24 +423,24 @@ describe("API-10 — ticket sorting (AC-15)", () => {
   });
 
   it("rejects an unsupported sort field with 400", async () => {
-    const res = await request(app).get(listUrl(ownerId)).query({ sortBy: "summary" });
+    const res = await agent.get(listUrl(ownerId)).query({ sortBy: "summary" });
 
     expect(res.status).toBe(400);
     expect(res.body.error.fieldErrors.sortBy).toEqual(expect.any(String));
   });
 
   it("rejects an unsupported sort order with 400", async () => {
-    const res = await request(app).get(listUrl(ownerId)).query({ sortOrder: "sideways" });
+    const res = await agent.get(listUrl(ownerId)).query({ sortOrder: "sideways" });
     expect(res.status).toBe(400);
   });
 });
 
 // ---------------------------------------------------------------------------
-// API-11 — pagination (AC-16)
+// API-11 â€” pagination (AC-16)
 // ---------------------------------------------------------------------------
-describe("API-11 — pagination (AC-16)", () => {
+describe("API-11 â€” pagination (AC-16)", () => {
   it("returns accurate pagination metadata", async () => {
-    const res = await request(app).get(listUrl(ownerId)).query({ pageSize: 10 });
+    const res = await agent.get(listUrl(ownerId)).query({ pageSize: 10 });
 
     expect(res.body.meta).toEqual({
       page: 1,
@@ -444,7 +451,7 @@ describe("API-11 — pagination (AC-16)", () => {
   });
 
   it("returns only the requested page", async () => {
-    const first = await request(app)
+    const first = await agent
       .get(listUrl(ownerId))
       .query({ pageSize: 10, page: 1, sortBy: "ticketNumber", sortOrder: "asc" });
 
@@ -453,7 +460,7 @@ describe("API-11 — pagination (AC-16)", () => {
     expect(first.body.data).toHaveLength(FIXTURES.length);
     expect(first.body.meta.totalPages).toBe(1);
 
-    const second = await request(app)
+    const second = await agent
       .get(listUrl(ownerId))
       .query({ pageSize: 10, page: 2, sortBy: "ticketNumber", sortOrder: "asc" });
 
@@ -465,7 +472,7 @@ describe("API-11 — pagination (AC-16)", () => {
   });
 
   it("counts every match, not just the current page", async () => {
-    const res = await request(app)
+    const res = await agent
       .get(listUrl(ownerId))
       .query({ pageSize: 10, search: "Printer" });
 
@@ -474,7 +481,7 @@ describe("API-11 — pagination (AC-16)", () => {
   });
 
   it("rejects an unsupported page size with 400 (BR-26)", async () => {
-    const res = await request(app).get(listUrl(ownerId)).query({ pageSize: 15 });
+    const res = await agent.get(listUrl(ownerId)).query({ pageSize: 15 });
 
     expect(res.status).toBe(400);
     expect(res.body.error.fieldErrors.pageSize).toEqual(expect.any(String));
@@ -482,7 +489,7 @@ describe("API-11 — pagination (AC-16)", () => {
 
   it("rejects page 0 and negative pages with 400 (BR-26)", async () => {
     for (const page of ["0", "-3"]) {
-      const res = await request(app).get(listUrl(ownerId)).query({ page });
+      const res = await agent.get(listUrl(ownerId)).query({ page });
       expect(res.status).toBe(400);
       expect(res.body.error.fieldErrors.page).toEqual(expect.any(String));
     }
@@ -494,8 +501,8 @@ describe("API-11 — pagination (AC-16)", () => {
 // ---------------------------------------------------------------------------
 describe("GET /api/tickets", () => {
   it("returns the same list when given a requesterId", async () => {
-    const viaPath = await request(app).get(listUrl(ownerId)).query({ pageSize: 50 });
-    const viaQuery = await request(app)
+    const viaPath = await agent.get(listUrl(ownerId)).query({ pageSize: 50 });
+    const viaQuery = await agent
       .get("/api/tickets")
       .query({ requesterId: ownerId, pageSize: 50 });
 
@@ -504,14 +511,14 @@ describe("GET /api/tickets", () => {
   });
 
   it("requires a requester (BR-06)", async () => {
-    const res = await request(app).get("/api/tickets");
+    const res = await agent.get("/api/tickets");
 
     expect(res.status).toBe(400);
     expect(res.body.error.fieldErrors.requesterId).toEqual(expect.any(String));
   });
 
   it("honours filters and sorting like the documented route", async () => {
-    const res = await request(app)
+    const res = await agent
       .get("/api/tickets")
       .query({ requesterId: ownerId, search: "Printer", sortBy: "ticketNumber", sortOrder: "asc" });
 
@@ -523,16 +530,16 @@ describe("GET /api/tickets", () => {
 });
 
 // ---------------------------------------------------------------------------
-// AC-23 / BR-39 — unexpected errors stay safe
+// AC-23 / BR-39 â€” unexpected errors stay safe
 // ---------------------------------------------------------------------------
-describe("GET ticket list — unexpected failure", () => {
+describe("GET ticket list â€” unexpected failure", () => {
   it("returns a safe 500 without leaking internals", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(prisma.ticket, "count").mockRejectedValue(
       new Error('Invalid `prisma.ticket.count()` at C:\\repo\\server\\src\\tickets.ts:88'),
     );
 
-    const res = await request(app).get(listUrl(ownerId));
+    const res = await agent.get(listUrl(ownerId));
 
     expect(res.status).toBe(500);
     expect(res.body.error.message).toBe("Could not load tickets. Please try again.");

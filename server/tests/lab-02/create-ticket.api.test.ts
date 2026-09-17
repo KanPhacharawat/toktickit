@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeAll, afterEach, afterAll, vi } from "vitest";
-import request from "supertest";
+﻿import { describe, it, expect, beforeAll, afterEach, afterAll, vi } from "vitest";
 import { app } from "../../src/app.js";
 import { getPrisma } from "../../src/prisma.js";
+import { loginAgent, type AuthedAgent } from "../authHelper.js";
 import {
   formatTicketNumber,
   nextSequence,
@@ -26,6 +26,10 @@ let otherRequesterId: number;
 let inactiveRequesterId: number | null = null;
 let categoryId: number;
 let relatedSystemId: number;
+// Lab 3 â€” POST /api/tickets is gated to the Requester role. Which seeded
+// account signs in is unrelated to `requesterId` above (the ticket's owner,
+// still supplied in the body exactly as in Lab 2).
+let agent: AuthedAgent;
 
 /** Marks rows this suite creates so cleanup never touches other data. */
 const SUMMARY_TAG = "[api-test]";
@@ -79,6 +83,8 @@ beforeAll(async () => {
   categoryId = category.id;
   relatedSystemId = relatedSystem.id;
   inactiveRequesterId = inactive?.id ?? null;
+
+  agent = await loginAgent(app);
 });
 
 afterEach(async () => {
@@ -93,9 +99,9 @@ afterAll(async () => {
 });
 
 // ---------------------------------------------------------------------------
-// UNIT-01 — Ticket Number generation
+// UNIT-01 â€” Ticket Number generation
 // ---------------------------------------------------------------------------
-describe("UNIT-01 — ticket number generation (BR-01, AC-05)", () => {
+describe("UNIT-01 â€” ticket number generation (BR-01, AC-05)", () => {
   it("formats numbers as TT-YYYYMMDD-NNNN", () => {
     expect(formatTicketNumber(new Date(2026, 8, 5), 1)).toBe(
       "TT-20260905-0001",
@@ -118,9 +124,9 @@ describe("UNIT-01 — ticket number generation (BR-01, AC-05)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// UNIT-02 / UNIT-03 — validation unit coverage
+// UNIT-02 / UNIT-03 â€” validation unit coverage
 // ---------------------------------------------------------------------------
-describe("UNIT-02 / UNIT-03 — summary and description validation (BR-11, BR-12, AC-07)", () => {
+describe("UNIT-02 / UNIT-03 â€” summary and description validation (BR-11, BR-12, AC-07)", () => {
   const base = {
     requesterId: 1,
     categoryId: 1,
@@ -205,19 +211,19 @@ describe("UNIT-02 / UNIT-03 — summary and description validation (BR-11, BR-12
 });
 
 // ---------------------------------------------------------------------------
-// API-02 / API-03 — successful creation
+// API-02 / API-03 â€” successful creation
 // ---------------------------------------------------------------------------
-describe("API-02 / API-03 — valid ticket creation and backend defaults (AC-05, AC-06)", () => {
+describe("API-02 / API-03 â€” valid ticket creation and backend defaults (AC-05, AC-06)", () => {
   it("returns 201 and saves exactly one ticket (AC-05)", async () => {
     const before = await prisma.ticket.count();
-    const res = await request(app).post("/api/tickets").send(uniqueBody());
+    const res = await agent.post("/api/tickets").send(uniqueBody());
 
     expect(res.status).toBe(201);
     expect(await prisma.ticket.count()).toBe(before + 1);
   });
 
   it("generates a unique ticket number in the documented format (BR-01)", async () => {
-    const res = await request(app).post("/api/tickets").send(uniqueBody());
+    const res = await agent.post("/api/tickets").send(uniqueBody());
 
     expect(res.body.data.ticketNumber).toMatch(/^TT-\d{8}-\d{4,}$/);
 
@@ -228,8 +234,8 @@ describe("API-02 / API-03 — valid ticket creation and backend defaults (AC-05,
   });
 
   it("issues increasing ticket numbers for consecutive tickets", async () => {
-    const first = await request(app).post("/api/tickets").send(uniqueBody());
-    const second = await request(app).post("/api/tickets").send(uniqueBody());
+    const first = await agent.post("/api/tickets").send(uniqueBody());
+    const second = await agent.post("/api/tickets").send(uniqueBody());
 
     const prefix = ticketNumberPrefixFor(new Date());
     expect(first.body.data.ticketNumber.startsWith(prefix)).toBe(true);
@@ -243,7 +249,7 @@ describe("API-02 / API-03 — valid ticket creation and backend defaults (AC-05,
 
   it("sets Current Status to New and a backend Ticket Date (AC-06)", async () => {
     const sentAt = Date.now();
-    const res = await request(app).post("/api/tickets").send(uniqueBody());
+    const res = await agent.post("/api/tickets").send(uniqueBody());
 
     expect(res.body.data.currentStatus).toBe("New");
 
@@ -254,7 +260,7 @@ describe("API-02 / API-03 — valid ticket creation and backend defaults (AC-05,
   });
 
   it("ignores client-supplied ticketNumber, ticketDate, and status", async () => {
-    const res = await request(app)
+    const res = await agent
       .post("/api/tickets")
       .send(
         uniqueBody({
@@ -274,7 +280,7 @@ describe("API-02 / API-03 — valid ticket creation and backend defaults (AC-05,
   });
 
   it("associates the ticket with the selected requester (AC-05)", async () => {
-    const res = await request(app).post("/api/tickets").send(uniqueBody());
+    const res = await agent.post("/api/tickets").send(uniqueBody());
 
     expect(res.body.data.requester.id).toBe(requesterId);
 
@@ -286,7 +292,7 @@ describe("API-02 / API-03 — valid ticket creation and backend defaults (AC-05,
   });
 
   it("associates the ticket with the chosen category and related system", async () => {
-    const res = await request(app).post("/api/tickets").send(uniqueBody());
+    const res = await agent.post("/api/tickets").send(uniqueBody());
 
     expect(res.body.data.category.id).toBe(categoryId);
     expect(res.body.data.relatedSystem.id).toBe(relatedSystemId);
@@ -296,7 +302,7 @@ describe("API-02 / API-03 — valid ticket creation and backend defaults (AC-05,
 
   it("persists trimmed text (FR-12)", async () => {
     const summary = `${SUMMARY_TAG} Whitespace around the summary`;
-    const res = await request(app)
+    const res = await agent
       .post("/api/tickets")
       .send(
         validBody({
@@ -313,15 +319,15 @@ describe("API-02 / API-03 — valid ticket creation and backend defaults (AC-05,
 });
 
 // ---------------------------------------------------------------------------
-// API-04 — validation failures (AC-08)
+// API-04 â€” validation failures (AC-08)
 // ---------------------------------------------------------------------------
-describe("API-04 — invalid ticket request (AC-08)", () => {
+describe("API-04 â€” invalid ticket request (AC-08)", () => {
   async function expectRejected(
     body: Record<string, unknown>,
     field: string,
   ): Promise<void> {
     const before = await prisma.ticket.count();
-    const res = await request(app).post("/api/tickets").send(body);
+    const res = await agent.post("/api/tickets").send(body);
 
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe("VALIDATION_ERROR");
@@ -384,13 +390,13 @@ describe("API-04 — invalid ticket request (AC-08)", () => {
   });
 
   it("rejects an empty body", async () => {
-    const res = await request(app).post("/api/tickets").send({});
+    const res = await agent.post("/api/tickets").send({});
     expect(res.status).toBe(400);
     expect(Object.keys(res.body.error.fieldErrors).length).toBeGreaterThan(0);
   });
 
   it("reports every invalid field at once", async () => {
-    const res = await request(app)
+    const res = await agent
       .post("/api/tickets")
       .send({ summary: "no", description: "no", requestedPriority: "NOPE" });
 
@@ -409,17 +415,17 @@ describe("API-04 — invalid ticket request (AC-08)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// API-05 — duplicate submission (AC-09, BR-18)
+// API-05 â€” duplicate submission (AC-09, BR-18)
 // ---------------------------------------------------------------------------
-describe("API-05 — duplicate submission (AC-09)", () => {
+describe("API-05 â€” duplicate submission (AC-09)", () => {
   it("does not create a second ticket for a repeated identical submission", async () => {
     const body = uniqueBody();
 
-    const first = await request(app).post("/api/tickets").send(body);
+    const first = await agent.post("/api/tickets").send(body);
     expect(first.status).toBe(201);
 
     const before = await prisma.ticket.count();
-    const second = await request(app).post("/api/tickets").send(body);
+    const second = await agent.post("/api/tickets").send(body);
 
     expect(second.status).toBe(409);
     expect(second.body.error.code).toBe("DUPLICATE_SUBMISSION");
@@ -428,24 +434,24 @@ describe("API-05 — duplicate submission (AC-09)", () => {
 
   it("points the caller at the ticket their action already created", async () => {
     const body = uniqueBody();
-    const first = await request(app).post("/api/tickets").send(body);
-    const second = await request(app).post("/api/tickets").send(body);
+    const first = await agent.post("/api/tickets").send(body);
+    const second = await agent.post("/api/tickets").send(body);
 
     expect(second.body.error.ticketNumber).toBe(first.body.data.ticketNumber);
   });
 
   it("still allows a genuinely different ticket from the same requester", async () => {
-    await request(app).post("/api/tickets").send(uniqueBody());
-    const other = await request(app).post("/api/tickets").send(uniqueBody());
+    await agent.post("/api/tickets").send(uniqueBody());
+    const other = await agent.post("/api/tickets").send(uniqueBody());
 
     expect(other.status).toBe(201);
   });
 
   it("does not block an identical summary from a different requester", async () => {
     const body = uniqueBody();
-    await request(app).post("/api/tickets").send(body);
+    await agent.post("/api/tickets").send(body);
 
-    const other = await request(app)
+    const other = await agent
       .post("/api/tickets")
       .send({ ...body, requesterId: otherRequesterId });
 
@@ -457,8 +463,8 @@ describe("API-05 — duplicate submission (AC-09)", () => {
     const before = await prisma.ticket.count();
 
     const results = await Promise.all([
-      request(app).post("/api/tickets").send(body),
-      request(app).post("/api/tickets").send(body),
+      agent.post("/api/tickets").send(body),
+      agent.post("/api/tickets").send(body),
     ]);
 
     // Exactly one ticket may be created from one user action (BR-18). The
@@ -470,9 +476,9 @@ describe("API-05 — duplicate submission (AC-09)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// AC-23 / BR-39 — unexpected errors stay safe
+// AC-23 / BR-39 â€” unexpected errors stay safe
 // ---------------------------------------------------------------------------
-describe("API-02 — unexpected failure stays safe (AC-23)", () => {
+describe("API-02 â€” unexpected failure stays safe (AC-23)", () => {
   it("returns a safe 500 without leaking internals", async () => {
     // Silence the deliberate console.error this test provokes.
     vi.spyOn(console, "error").mockImplementation(() => {});
@@ -482,7 +488,7 @@ describe("API-02 — unexpected failure stays safe (AC-23)", () => {
       ),
     );
 
-    const res = await request(app).post("/api/tickets").send(uniqueBody());
+    const res = await agent.post("/api/tickets").send(uniqueBody());
 
     expect(res.status).toBe(500);
     expect(res.body.error.message).toBe(
@@ -502,7 +508,7 @@ describe("API-02 — unexpected failure stays safe (AC-23)", () => {
 // ---------------------------------------------------------------------------
 describe("GET /api/related-systems", () => {
   it("returns active related systems in the documented envelope", async () => {
-    const res = await request(app).get("/api/related-systems");
+    const res = await agent.get("/api/related-systems");
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body.data)).toBe(true);
@@ -519,7 +525,7 @@ describe("GET /api/related-systems", () => {
       select: { id: true },
     });
 
-    const res = await request(app).get("/api/related-systems");
+    const res = await agent.get("/api/related-systems");
     const ids = res.body.data.map((s: { id: number }) => s.id);
 
     for (const { id } of inactive) expect(ids).not.toContain(id);

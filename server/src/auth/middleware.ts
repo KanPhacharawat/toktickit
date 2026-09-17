@@ -1,4 +1,5 @@
-import type { NextFunction, Request, Response } from "express";
+import type { UserRole } from "@prisma/client";
+import type { NextFunction, Request, RequestHandler, Response } from "express";
 import {
   SESSION_COOKIE,
   clearSessionCookie,
@@ -60,4 +61,67 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       },
     });
   }
+}
+
+/** Lab 3 api-spec §2.1 envelope for a route blocked by the password-change gate. */
+function passwordChangeRequired(res: Response) {
+  return res.status(403).json({
+    error: {
+      code: "PASSWORD_CHANGE_REQUIRED",
+      message: "Change your password before continuing.",
+    },
+  });
+}
+
+/**
+ * BR-08 step 2 / BR-02 — every protected route requires a completed password
+ * change, except `/auth/me`, `/auth/logout`, and `/auth/change-password`
+ * (which call `requireAuth` directly and never this). Must run after
+ * `requireAuth`, which sets `req.auth`.
+ */
+export function requirePasswordChangeComplete(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  if (req.auth!.user.mustChangePassword) return passwordChangeRequired(res);
+  return next();
+}
+
+/** Lab 3 api-spec §2.1 envelope for a role the caller does not have. */
+function forbidden(res: Response) {
+  return res.status(403).json({
+    error: {
+      code: "FORBIDDEN",
+      message: "You do not have access to this resource.",
+    },
+  });
+}
+
+/**
+ * BR-08 step 3 — the caller's role must be one of `roles`. Must run after
+ * `requireAuth`.
+ *
+ * BR-09 — this runs before any resource lookup, so a role that may never use
+ * a route gets the identical `403` for every id, valid or not.
+ */
+export function requireRole(...roles: UserRole[]): RequestHandler {
+  return (req, res, next) => {
+    if (!roles.includes(req.auth!.user.role)) return forbidden(res);
+    return next();
+  };
+}
+
+/**
+ * Composes the standard guard chain for a protected route (BR-08 steps 1–3):
+ * session, then the password-change gate, then role when `roles` is given.
+ * Spread the result into an Express route:
+ * `router.get(path, ...protect("Requester"), handler)`. With no roles, every
+ * authenticated, gated user may proceed — the Lab 3 matrix's "Yes" for every
+ * role (Categories, Related Systems).
+ */
+export function protect(...roles: UserRole[]): RequestHandler[] {
+  const chain: RequestHandler[] = [requireAuth, requirePasswordChangeComplete];
+  if (roles.length > 0) chain.push(requireRole(...roles));
+  return chain;
 }

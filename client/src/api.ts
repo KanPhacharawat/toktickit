@@ -17,7 +17,9 @@ export interface DevelopmentRequester {
 export async function fetchActiveRequesters(): Promise<DevelopmentRequester[]> {
   let res: Response;
   try {
-    res = await fetch(`${API_URL}/api/development-requesters`);
+    res = await fetch(`${API_URL}/api/development-requesters`, {
+      credentials: "include",
+    });
   } catch {
     // Network/DNS/CORS failure — the API was never reached.
     throw new Error("Could not reach the server. Please try again.");
@@ -117,7 +119,7 @@ async function fetchReference(
 ): Promise<ReferenceItem[]> {
   let res: Response;
   try {
-    res = await fetch(`${API_URL}${path}`);
+    res = await fetch(`${API_URL}${path}`, { credentials: "include" });
   } catch {
     throw new Error("Could not reach the server. Please try again.");
   }
@@ -222,6 +224,7 @@ export async function fetchMyTickets(
   try {
     res = await fetch(
       `${API_URL}/api/requesters/${requesterId}/tickets${suffix}`,
+      { credentials: "include" },
     );
   } catch {
     throw new ApiError("Could not reach the server. Please try again.", {
@@ -329,7 +332,7 @@ export async function fetchTicketDetail(
 ): Promise<TicketDetail> {
   let res: Response;
   try {
-    res = await fetch(ticketUrl(requesterId, ticketId));
+    res = await fetch(ticketUrl(requesterId, ticketId), { credentials: "include" });
   } catch {
     throw new ApiError("Could not reach the server. Please try again.", {
       status: 0,
@@ -366,6 +369,7 @@ export async function uploadAttachment(
     res = await fetch(`${ticketUrl(requesterId, ticketId)}/attachments`, {
       method: "POST",
       body: form,
+      credentials: "include",
     });
   } catch {
     throw new ApiError("Could not reach the server. Please try again.", {
@@ -400,7 +404,9 @@ export async function fetchAttachments(
 ): Promise<AttachmentMetadata[]> {
   let res: Response;
   try {
-    res = await fetch(`${ticketUrl(requesterId, ticketId)}/attachments`);
+    res = await fetch(`${ticketUrl(requesterId, ticketId)}/attachments`, {
+      credentials: "include",
+    });
   } catch {
     throw new ApiError("Could not reach the server. Please try again.", {
       status: 0,
@@ -450,6 +456,7 @@ export async function removeAttachment(
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ removalReason }),
+        credentials: "include",
       },
     );
   } catch {
@@ -492,6 +499,7 @@ export async function createTicket(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+      credentials: "include",
     });
   } catch {
     throw new ApiError("Could not reach the server. Please try again.", {

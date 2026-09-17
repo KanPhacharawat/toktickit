@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
+export const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 
 /** A Lab 2 testing identity (BR-04). Not a real authenticated user. */
 export interface DevelopmentRequester {

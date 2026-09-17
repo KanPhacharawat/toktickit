@@ -8,5 +8,10 @@ export default defineConfig({
     // Running files in parallel lets one suite's fixtures land in another
     // suite's counts, so run them one file at a time.
     fileParallelism: false,
+    env: {
+      // Lab 3 BR-12 — the lowest permitted cost keeps hashing-heavy suites
+      // fast; production keeps the default of 12.
+      BCRYPT_COST: "10",
+    },
   },
 });

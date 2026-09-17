@@ -82,13 +82,13 @@ async function removeFixtures() {
 
 beforeAll(async () => {
   const [owner, other] = await Promise.all([
-    prisma.developmentRequester.upsert({
+    prisma.user.upsert({
       where: { email: OWNER_EMAIL },
       update: { isActive: true, deletedAt: null },
       create: { name: "Attachment Owner", email: OWNER_EMAIL, isActive: true },
       select: { id: true },
     }),
-    prisma.developmentRequester.upsert({
+    prisma.user.upsert({
       where: { email: OTHER_EMAIL },
       update: { isActive: true, deletedAt: null },
       create: { name: "Attachment Other", email: OTHER_EMAIL, isActive: true },
@@ -113,7 +113,7 @@ afterEach(() => {
 
 afterAll(async () => {
   await removeFixtures();
-  await prisma.developmentRequester.deleteMany({
+  await prisma.user.deleteMany({
     where: { email: { in: [OWNER_EMAIL, OTHER_EMAIL] } },
   });
   await prisma.$disconnect();

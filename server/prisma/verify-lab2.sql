@@ -4,6 +4,9 @@
 --
 -- Read-only apart from section 8, which creates rows inside a transaction
 -- and rolls them back, so the database is left untouched.
+--
+-- Lab 2 schema only: the Lab 3 migration renames "DevelopmentRequester" to
+-- "User", so run this against a database migrated no further than Lab 2.
 
 \echo ''
 \echo '### 1. Models exist (expect Attachment, Category, DevelopmentRequester, RelatedSystem, Ticket)'

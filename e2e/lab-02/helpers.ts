@@ -65,9 +65,43 @@ export async function chooseRequesterOption(page: Page, name: string) {
   await expect(page.getByTestId("current-requester")).toContainText(name);
 }
 
+/**
+ * Lab 3 puts a login in front of the Lab 2 screens. The seeded development
+ * account used to reach them (server/prisma/seedData.ts); the seed runs in
+ * global setup, so this password is always current.
+ */
+export const E2E_LOGIN = {
+  email: "requester-a@example.com",
+  password: "TokTickIT-Dev1!",
+};
+
+/**
+ * Opens the app, signing in first when the Login screen appears. A browser
+ * context keeps its session cookie, so later calls go straight to the app.
+ */
+export async function openApp(page: Page) {
+  await page.goto("/");
+
+  const signIn = page.getByRole("button", { name: /^sign in$/i });
+  const selector = page.getByLabel(/development requester/i);
+  const shell = page.getByTestId("signed-in-user");
+  // Signed in, the selector and the shell identity are both visible.
+  await expect(signIn.or(selector).or(shell).first()).toBeVisible();
+
+  if (await signIn.isVisible()) {
+    await page.getByLabel(/^email/i).fill(E2E_LOGIN.email);
+    await page.getByLabel(/^password/i).fill(E2E_LOGIN.password);
+    // Submit with the keyboard, not a click: a mouse click would switch the
+    // browser's :focus-visible heuristic off for the keyboard checks that
+    // follow (E2E-06).
+    await page.getByLabel(/^password/i).press("Enter");
+    await expect(page.getByTestId("signed-in-user")).toBeVisible();
+  }
+}
+
 /** Opens the app and selects a Development Requester. */
 export async function selectRequester(page: Page, name: string) {
-  await page.goto("/");
+  await openApp(page);
   await chooseRequesterOption(page, name);
 }
 

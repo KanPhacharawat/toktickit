@@ -7,6 +7,7 @@ import {
   gotoCreateTicket,
   gotoMyTickets,
   makePngFile,
+  openApp,
   openTicket,
   selectRequester,
   uniqueSummary,
@@ -42,7 +43,7 @@ test("E2E-01 — requester selects identity, creates a ticket, sees the official
   await page.setViewportSize(DESKTOP);
 
   // AC-01 — the selection screen lists active requesters.
-  await page.goto("/");
+  await openApp(page);
   const select = page.getByLabel(/development requester/i);
   await expect(select).toBeVisible();
   await expect(page.getByRole("note")).toContainText(/not a real login/i);
@@ -337,7 +338,7 @@ test("E2E-06 — keyboard navigation and visible focus work on core screens", as
   await page.setViewportSize(DESKTOP);
 
   // The selector is reachable and operable by keyboard alone.
-  await page.goto("/");
+  await openApp(page);
   const select = page.getByLabel(/development requester/i);
   await expect(select).toBeVisible();
   await select.focus();

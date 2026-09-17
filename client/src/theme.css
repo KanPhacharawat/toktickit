@@ -358,6 +358,44 @@ body {
   padding: 0.75rem;
 }
 
+/* --- Lab 3 authentication ---------------------------------------------- */
+/* Layout only: every colour below is an existing Zen Green token. */
+
+/* Password checklist — state is also given as text ("met"/"not met"). */
+.zen-rule-met {
+  color: var(--zen-success);
+}
+.zen-rule-unmet {
+  color: var(--zen-muted);
+}
+
+/* Profile menu in the shell header. */
+.zen-profile-menu {
+  color: var(--zen-text);
+  min-width: 240px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.25rem);
+  z-index: 1000;
+}
+.zen-menu-item {
+  background: none;
+  border: none;
+  color: var(--zen-text);
+  display: block;
+  min-height: 44px;
+  padding: 0.5rem 1rem;
+  text-align: left;
+  width: 100%;
+}
+.zen-menu-item:hover:not(:disabled) {
+  background-color: var(--zen-pale);
+}
+.zen-menu-item:focus-visible {
+  outline: 3px solid var(--zen-secondary);
+  outline-offset: -3px;
+}
+
 /* Touch-friendly floor for the compact buttons used in the shell, the
    attachment rows, and pagination. Bootstrap's .btn-sm renders at 31px,
    which is below a comfortable tap target on tablet and mobile

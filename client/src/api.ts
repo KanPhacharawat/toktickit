@@ -297,6 +297,48 @@ export interface TicketDetail {
   permissions: TicketDetailPermissions;
 }
 
+// ---------------------------------------------------------------------------
+// Staff Ticket Detail (api-spec.md §3.6, §9)
+// ---------------------------------------------------------------------------
+
+export interface StaffTicketDetailPermissions {
+  canClaim: boolean;
+  canAssign: boolean;
+  canReassign: boolean;
+  canChangeItPriority: boolean;
+  canChangeStatus: boolean;
+  canAddPublicComment: boolean;
+  canAddInternalNote: boolean;
+  canManageAttachments: boolean;
+}
+
+export interface StaffTicketDetail {
+  id: number;
+  ticketNumber: string;
+  ticketDate: string;
+  requester: { id: number; name: string; email?: string };
+  category: ReferenceItem;
+  relatedSystem: ReferenceItem;
+  summary: string;
+  description: string;
+  requestedPriority: RequestedPriority;
+  itPriority: ItPriority;
+  currentStatus: string;
+  ticketOwner: QueueOwner | null;
+  allowedStatusTransitions: string[];
+  problemAppearsResolvedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  attachments: AttachmentMetadata[];
+  permissions: StaffTicketDetailPermissions;
+}
+
+export interface AssignableUser {
+  id: number;
+  name: string;
+  role: string;
+}
+
 /** Reads a JSON body, tolerating a non-JSON error page. */
 async function readJson(res: Response): Promise<unknown> {
   try {
@@ -352,6 +394,144 @@ export async function fetchTicketDetail(ticketId: number): Promise<TicketDetail>
     });
   }
   return data;
+}
+
+/**
+ * Same endpoint as `fetchTicketDetail`, typed for the caller's own role: IT
+ * Staff and Administrators always receive the StaffTicketDetail shape.
+ */
+export async function fetchStaffTicketDetail(ticketId: number): Promise<StaffTicketDetail> {
+  let res: Response;
+  try {
+    res = await fetch(ticketUrl(ticketId), { credentials: "include" });
+  } catch {
+    throw new ApiError("Could not reach the server. Please try again.", {
+      status: 0,
+      code: "NETWORK_ERROR",
+    });
+  }
+
+  const body = await readJson(res);
+  if (!res.ok) {
+    notifyIfSessionExpired(res.status);
+    throw toApiError(res, body, "Could not load the ticket. Please try again.");
+  }
+
+  const data = (body as { data?: StaffTicketDetail } | null)?.data;
+  if (!data?.ticketNumber) {
+    throw new ApiError("The ticket response was not understood.", {
+      status: res.status,
+      code: "BAD_RESPONSE",
+    });
+  }
+  return data;
+}
+
+/** api-spec.md §7.2 — active IT Staff and Administrators, for Assign/Reassign. */
+export async function fetchAssignableUsers(): Promise<AssignableUser[]> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/users/assignable`, { credentials: "include" });
+  } catch {
+    throw new ApiError("Could not reach the server. Please try again.", {
+      status: 0,
+      code: "NETWORK_ERROR",
+    });
+  }
+  const body = await readJson(res);
+  if (!res.ok) {
+    notifyIfSessionExpired(res.status);
+    throw toApiError(res, body, "Could not load assignable users.");
+  }
+  const data = (body as { data?: AssignableUser[] } | null)?.data;
+  if (!Array.isArray(data)) {
+    throw new ApiError("The response was not understood.", { status: res.status, code: "BAD_RESPONSE" });
+  }
+  return data;
+}
+
+async function staffOperation(
+  path: string,
+  method: "POST" | "PATCH",
+  body: Record<string, unknown>,
+  fallback: string,
+): Promise<StaffTicketDetail> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      credentials: "include",
+    });
+  } catch {
+    throw new ApiError("Could not reach the server. Please try again.", {
+      status: 0,
+      code: "NETWORK_ERROR",
+    });
+  }
+  const parsed = await readJson(res);
+  if (!res.ok) {
+    notifyIfSessionExpired(res.status);
+    throw toApiError(res, parsed, fallback);
+  }
+  const data = (parsed as { data?: StaffTicketDetail } | null)?.data;
+  if (!data?.ticketNumber) {
+    throw new ApiError("The response was not understood.", { status: res.status, code: "BAD_RESPONSE" });
+  }
+  return data;
+}
+
+/** api-spec.md §9.1 — claim an unassigned Ticket. */
+export function claimTicket(ticketId: number, expectedUpdatedAt?: string): Promise<StaffTicketDetail> {
+  return staffOperation(
+    `/api/tickets/${ticketId}/claim`,
+    "POST",
+    expectedUpdatedAt ? { expectedUpdatedAt } : {},
+    "Could not claim the ticket. Please try again.",
+  );
+}
+
+/** api-spec.md §9.2 — assign an unassigned Ticket, or reassign an owned one. */
+export function setTicketOwner(
+  ticketId: number,
+  ticketOwnerId: number,
+  expectedUpdatedAt?: string,
+): Promise<StaffTicketDetail> {
+  return staffOperation(
+    `/api/tickets/${ticketId}/owner`,
+    "PATCH",
+    { ticketOwnerId, ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}) },
+    "Could not update the owner. Please try again.",
+  );
+}
+
+/** api-spec.md §9.3 — change IT Priority. */
+export function setItPriority(
+  ticketId: number,
+  itPriority: ItPriority,
+  expectedUpdatedAt?: string,
+): Promise<StaffTicketDetail> {
+  return staffOperation(
+    `/api/tickets/${ticketId}/it-priority`,
+    "PATCH",
+    { itPriority, ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}) },
+    "Could not update IT Priority. Please try again.",
+  );
+}
+
+/** api-spec.md §9.4 — change status, per the transition matrix. */
+export function setTicketStatus(
+  ticketId: number,
+  currentStatus: string,
+  expectedUpdatedAt?: string,
+): Promise<StaffTicketDetail> {
+  return staffOperation(
+    `/api/tickets/${ticketId}/status`,
+    "PATCH",
+    { currentStatus, ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}) },
+    "Could not update the status. Please try again.",
+  );
 }
 
 /** BR-10 — upload is scoped to a Ticket the Requester owns. */
@@ -742,6 +922,42 @@ export async function reportProblemResolved(
   );
   if (!result.data?.problemAppearsResolvedAt) {
     throw new ApiError("The report response was not understood.", {
+      status: 0,
+      code: "BAD_RESPONSE",
+    });
+  }
+  return result.data;
+}
+
+// ---------------------------------------------------------------------------
+// Internal Notes (Lab 3 api-spec.md §11) — IT Staff and Administrator only.
+// ---------------------------------------------------------------------------
+
+/** api-spec.md §11.1 — Internal Notes, oldest first. */
+export async function fetchInternalNotes(ticketId: number): Promise<ThreadEntry[]> {
+  const body = await threadRequest<{ data?: ThreadEntry[] }>(
+    `/api/tickets/${ticketId}/internal-notes`,
+    { method: "GET" },
+    "Could not load notes. Please try again.",
+  );
+  if (!Array.isArray(body.data)) {
+    throw new ApiError("The note list response was not understood.", {
+      status: 0,
+      code: "BAD_RESPONSE",
+    });
+  }
+  return body.data;
+}
+
+/** api-spec.md §11.2 — posts one Internal Note as the caller. */
+export async function postInternalNote(ticketId: number, body: string): Promise<ThreadEntry> {
+  const result = await threadRequest<{ data?: ThreadEntry }>(
+    `/api/tickets/${ticketId}/internal-notes`,
+    { method: "POST", body: JSON.stringify({ body }) },
+    "Could not post the note. Please try again.",
+  );
+  if (!result.data?.id) {
+    throw new ApiError("The note response was not understood.", {
       status: 0,
       code: "BAD_RESPONSE",
     });

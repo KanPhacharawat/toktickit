@@ -170,16 +170,17 @@ describe("API-12 — Requester Public Comments (AC-23, BR-43, BR-47)", () => {
     expect(res.body.error.code).toBe("TICKET_CLOSED");
   });
 
-  it("denies IT Staff for now — staff comment access arrives with its own issue (FR-39)", async () => {
+  it("lets IT Staff and Administrators post and read Public Comments on any ticket (FR-39)", async () => {
     const ticketId = await createTicketFor(requesterId, "Staff comment");
 
-    // Staff access to any Ticket's Public Comments arrives with the IT Staff
-    // Ticket Operations issue; today the route is Requester-only, so a staff
-    // caller correctly gets 403 rather than reading another user's data.
-    const res = await staffAgent
+    const posted = await staffAgent
       .post(`/api/tickets/${ticketId}/public-comments`)
       .send({ body: "Staff comment" });
-    expect(res.status).toBe(403);
+    expect(posted.status).toBe(201);
+    expect(posted.body.data.author.role).toBe("ITStaff");
+
+    const list = await requesterAgent.get(`/api/tickets/${ticketId}/public-comments`);
+    expect(list.body.data.map((c: { body: string }) => c.body)).toContain("Staff comment");
   });
 });
 

@@ -2,27 +2,13 @@ import { Router, type Request, type Response } from "express";
 import { getPrisma } from "./prisma.js";
 import { protect } from "./auth/middleware.js";
 import { normalizeThreadBody } from "./threadContent.js";
-import { requireOwnedTicket, TERMINAL_STATUSES } from "./attachments.js";
+import { fail, internalError, resolveTicketAccess } from "./ticketAccess.js";
+import { isTerminal } from "./statusTransitions.js";
 
-// Public Comments and "Problem Appears Resolved" for Requesters
-// (api-spec.md §10, §12). Internal Notes and the staff-facing thread routes
-// arrive with the IT Staff Ticket Operations issue.
+// Public Comments (§10), Internal Notes (§11), and "Problem Appears
+// Resolved" (§12).
 
 export const commentsRouter = Router();
-
-function fail(
-  res: Response,
-  status: number,
-  code: string,
-  message: string,
-  extra: Record<string, unknown> = {},
-) {
-  return res.status(status).json({ error: { code, message, ...extra } });
-}
-
-function internalError(res: Response, message: string) {
-  return fail(res, 500, "INTERNAL_ERROR", message);
-}
 
 /** api-spec.md §3.3 — the ThreadEntry shape shared by comments and notes. */
 function toThreadEntry(entry: {
@@ -40,19 +26,19 @@ function toThreadEntry(entry: {
 }
 
 // ---------------------------------------------------------------------------
-// GET /api/tickets/:ticketId/public-comments (§10.1). Requester (own) only
-// for now; IT Staff and Administrators are added with their own issue.
+// GET /api/tickets/:ticketId/public-comments (§10.1). Requester (own), IT
+// Staff, Administrator (any).
 // ---------------------------------------------------------------------------
 commentsRouter.get(
   "/api/tickets/:ticketId/public-comments",
-  ...protect("Requester"),
+  ...protect("Requester", "ITStaff", "Administrator"),
   async (req: Request, res: Response) => {
     try {
-      const owned = await requireOwnedTicket(req, res);
-      if (!owned.ok) return;
+      const access = await resolveTicketAccess(req, res);
+      if (!access.ok) return;
 
       const comments = await getPrisma().publicComment.findMany({
-        where: { ticketId: owned.ticketId },
+        where: { ticketId: access.ticketId },
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
         include: { author: { select: { id: true, name: true, role: true } } },
       });
@@ -66,18 +52,19 @@ commentsRouter.get(
 );
 
 // ---------------------------------------------------------------------------
-// POST /api/tickets/:ticketId/public-comments (§10.2). Requester (own).
+// POST /api/tickets/:ticketId/public-comments (§10.2). Requester (own), IT
+// Staff, Administrator (any); not on a terminal Ticket.
 // ---------------------------------------------------------------------------
 commentsRouter.post(
   "/api/tickets/:ticketId/public-comments",
-  ...protect("Requester"),
+  ...protect("Requester", "ITStaff", "Administrator"),
   async (req: Request, res: Response) => {
     try {
-      const owned = await requireOwnedTicket(req, res);
-      if (!owned.ok) return;
+      const access = await resolveTicketAccess(req, res);
+      if (!access.ok) return;
 
       // BR-41 — no new Public Comments on a terminal Ticket.
-      if (TERMINAL_STATUSES.has(owned.currentStatus)) {
+      if (isTerminal(access.currentStatus)) {
         return fail(
           res,
           409,
@@ -97,13 +84,13 @@ commentsRouter.post(
       }
 
       const comment = await getPrisma().publicComment.create({
-        data: { ticketId: owned.ticketId, authorId: req.auth!.user.id, body },
+        data: { ticketId: access.ticketId, authorId: req.auth!.user.id, body },
         include: { author: { select: { id: true, name: true, role: true } } },
       });
 
       // BR-47 — a Public Comment updates the Ticket's activity timestamp.
       const ticket = await getPrisma().ticket.update({
-        where: { id: owned.ticketId },
+        where: { id: access.ticketId },
         data: { updatedAt: new Date() },
         select: { updatedAt: true },
       });
@@ -115,6 +102,68 @@ commentsRouter.post(
     } catch (err) {
       console.error("POST public comment failed:", err);
       return internalError(res, "Could not post the comment. Please try again.");
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// GET /api/tickets/:ticketId/internal-notes (§11.1). IT Staff, Administrator
+// only — a Requester gets 403 for any ticketId, before any lookup (BR-09).
+// ---------------------------------------------------------------------------
+commentsRouter.get(
+  "/api/tickets/:ticketId/internal-notes",
+  ...protect("ITStaff", "Administrator"),
+  async (req: Request, res: Response) => {
+    try {
+      const access = await resolveTicketAccess(req, res);
+      if (!access.ok) return;
+
+      const notes = await getPrisma().internalNote.findMany({
+        where: { ticketId: access.ticketId },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        include: { author: { select: { id: true, name: true, role: true } } },
+      });
+
+      return res.status(200).json({ data: notes.map(toThreadEntry) });
+    } catch (err) {
+      console.error("GET internal notes failed:", err);
+      return internalError(res, "Could not load notes. Please try again.");
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// POST /api/tickets/:ticketId/internal-notes (§11.2). IT Staff,
+// Administrator only. Allowed on every status, including Closed and
+// Cancelled (BR-44), and never updates the Ticket's updatedAt (BR-47).
+// ---------------------------------------------------------------------------
+commentsRouter.post(
+  "/api/tickets/:ticketId/internal-notes",
+  ...protect("ITStaff", "Administrator"),
+  async (req: Request, res: Response) => {
+    try {
+      const access = await resolveTicketAccess(req, res);
+      if (!access.ok) return;
+
+      const { body, error } = normalizeThreadBody(
+        (req.body as { body?: unknown } | undefined)?.body,
+        "Note",
+      );
+      if (!body) {
+        return fail(res, 400, "VALIDATION_ERROR", "The request contains invalid data.", {
+          fieldErrors: { body: error },
+        });
+      }
+
+      const note = await getPrisma().internalNote.create({
+        data: { ticketId: access.ticketId, authorId: req.auth!.user.id, body },
+        include: { author: { select: { id: true, name: true, role: true } } },
+      });
+
+      return res.status(201).json({ data: toThreadEntry(note) });
+    } catch (err) {
+      console.error("POST internal note failed:", err);
+      return internalError(res, "Could not post the note. Please try again.");
     }
   },
 );
@@ -136,10 +185,10 @@ commentsRouter.post(
   ...protect("Requester"),
   async (req: Request, res: Response) => {
     try {
-      const owned = await requireOwnedTicket(req, res);
-      if (!owned.ok) return;
+      const access = await resolveTicketAccess(req, res);
+      if (!access.ok) return;
 
-      if (TERMINAL_STATUSES.has(owned.currentStatus)) {
+      if (isTerminal(access.currentStatus)) {
         return fail(
           res,
           409,
@@ -168,7 +217,7 @@ commentsRouter.post(
       const prisma = getPrisma();
 
       const current = await prisma.ticket.findUniqueOrThrow({
-        where: { id: owned.ticketId },
+        where: { id: access.ticketId },
         select: { currentStatus: true, problemAppearsResolvedAt: true },
       });
 
@@ -203,11 +252,11 @@ commentsRouter.post(
 
       const [comment, ticket] = await prisma.$transaction(async (tx) => {
         const createdComment = await tx.publicComment.create({
-          data: { ticketId: owned.ticketId, authorId: req.auth!.user.id, body },
+          data: { ticketId: access.ticketId, authorId: req.auth!.user.id, body },
           include: { author: { select: { id: true, name: true, role: true } } },
         });
         const updatedTicket = await tx.ticket.update({
-          where: { id: owned.ticketId },
+          where: { id: access.ticketId },
           data: { problemAppearsResolvedAt: new Date() },
           select: { problemAppearsResolvedAt: true, currentStatus: true, updatedAt: true },
         });

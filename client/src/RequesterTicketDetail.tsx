@@ -5,10 +5,11 @@ import {
   fetchTicketDetail,
   postPublicComment,
   reportProblemResolved,
-  type ThreadEntry,
   type TicketDetail,
 } from "./api.js";
+import { useAuth } from "./AuthContext.js";
 import AttachmentSection from "./AttachmentSection.js";
+import ThreadSection from "./ThreadSection.js";
 import { priorityLabel } from "./ticketFormRules.js";
 
 const COMMENT_MAX = 2000;
@@ -38,176 +39,6 @@ function DetailField({
         {value}
       </p>
     </div>
-  );
-}
-
-/** Public Comments thread and composer (ui-spec.md §10.1). */
-function PublicComments({
-  ticketId,
-  canAddComment,
-  refreshToken,
-  onPosted,
-}: {
-  ticketId: number;
-  canAddComment: boolean;
-  refreshToken: number;
-  onPosted: () => void;
-}) {
-  const [entries, setEntries] = useState<ThreadEntry[]>([]);
-  const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
-  const [errorMessage, setErrorMessage] = useState("");
-
-  const [draft, setDraft] = useState("");
-  const [draftError, setDraftError] = useState("");
-  const [posting, setPosting] = useState(false);
-  const [postError, setPostError] = useState("");
-
-  const load = useCallback(async () => {
-    setLoadState("loading");
-    setErrorMessage("");
-    try {
-      const data = await fetchPublicComments(ticketId);
-      setEntries(data);
-      setLoadState("ready");
-    } catch (err) {
-      setErrorMessage(
-        err instanceof ApiError ? err.message : "Could not load comments. Please try again.",
-      );
-      setLoadState("error");
-    }
-  }, [ticketId]);
-
-  useEffect(() => {
-    void load();
-  }, [load, refreshToken]);
-
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault();
-    if (posting) return;
-
-    const trimmed = draft.trim();
-    if (trimmed.length === 0) {
-      setDraftError("Comment is required.");
-      return;
-    }
-    if (trimmed.length > COMMENT_MAX) {
-      setDraftError(`Comment must be ${COMMENT_MAX} characters or fewer.`);
-      return;
-    }
-
-    setDraftError("");
-    setPostError("");
-    setPosting(true);
-    try {
-      const entry = await postPublicComment(ticketId, draft);
-      setEntries((current) => [...current, entry]);
-      setDraft("");
-      onPosted();
-    } catch (err) {
-      setPostError(
-        err instanceof ApiError ? err.message : "Could not post the comment. Please try again.",
-      );
-    } finally {
-      setPosting(false);
-    }
-  }
-
-  return (
-    <section className="zen-card p-4 mt-3" aria-label="Public Comments">
-      <div className="zen-testing-banner mb-2">Public — visible to the requester</div>
-      <h2 className="zen-title h5 mb-3">{`Public Comments (${entries.length})`}</h2>
-
-      {loadState === "loading" && (
-        <p className="text-secondary" role="status">
-          <span className="spinner-border spinner-border-sm me-2" aria-hidden="true" />
-          Loading comments…
-        </p>
-      )}
-
-      {loadState === "error" && (
-        <div className="alert zen-error-banner" role="alert">
-          <strong>Could not load comments.</strong>
-          <p className="mb-2 mt-1 small">{errorMessage}</p>
-          <button type="button" className="btn btn-sm zen-btn-outline" onClick={() => void load()}>
-            Retry
-          </button>
-        </div>
-      )}
-
-      {loadState === "ready" && entries.length === 0 && (
-        <p className="text-secondary mb-0">No public comments yet.</p>
-      )}
-
-      {loadState === "ready" && entries.length > 0 && (
-        <ol className="list-unstyled mb-0" data-testid="public-comment-list">
-          {entries.map((entry) => (
-            <li key={entry.id} className="mb-3 pb-3 border-bottom">
-              <div className="d-flex flex-wrap align-items-center gap-2 mb-1">
-                <span className="fw-semibold">{entry.author.name}</span>
-                <span className="zen-badge zen-status">{entry.author.role}</span>
-                <time className="text-secondary small" dateTime={entry.createdAt}>
-                  {new Date(entry.createdAt).toLocaleString()}
-                </time>
-              </div>
-              <p className="mb-0" style={{ whiteSpace: "pre-wrap" }}>
-                {entry.body}
-              </p>
-            </li>
-          ))}
-        </ol>
-      )}
-
-      {canAddComment ? (
-        <form className="mt-4" onSubmit={handleSubmit}>
-          <label className="form-label fw-semibold" htmlFor="public-comment-draft">
-            Add a public comment
-            <span className="zen-required" aria-hidden="true">
-              {" *"}
-            </span>
-            <span className="visually-hidden"> (required)</span>
-          </label>
-          <textarea
-            id="public-comment-draft"
-            className={`form-control zen-input zen-textarea${draftError ? " zen-invalid" : ""}`}
-            rows={3}
-            maxLength={COMMENT_MAX}
-            value={draft}
-            onChange={(e) => {
-              setDraft(e.target.value);
-              setDraftError("");
-            }}
-            disabled={posting}
-            aria-invalid={draftError ? true : undefined}
-            aria-describedby="public-comment-counter public-comment-error"
-          />
-          <p id="public-comment-counter" className="text-secondary small mt-1 mb-0">
-            {`${draft.length} / ${COMMENT_MAX}`}
-          </p>
-          {draftError && (
-            <p id="public-comment-error" className="zen-error-text small mt-1 mb-0">
-              {draftError}
-            </p>
-          )}
-          {postError && (
-            <div className="alert zen-error-banner mt-2 mb-0" role="alert">
-              {postError}
-            </div>
-          )}
-          <button
-            type="submit"
-            className="btn zen-btn-primary mt-2"
-            disabled={posting}
-            aria-busy={posting}
-          >
-            {posting ? "Posting…" : "Post Public Comment"}
-          </button>
-        </form>
-      ) : (
-        <p className="text-secondary small mt-3 mb-0">
-          This ticket is closed. New public comments are not accepted.
-        </p>
-      )}
-    </section>
   );
 }
 
@@ -336,6 +167,7 @@ export default function RequesterTicketDetail({
   ticketId: number;
   onBack: () => void;
 }) {
+  const { user } = useAuth();
   const [ticket, setTicket] = useState<TicketDetail | null>(null);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">(
     "loading",
@@ -501,15 +333,20 @@ export default function RequesterTicketDetail({
             onChanged={() => load({ silent: true })}
           />
 
-          <PublicComments
+          <ThreadSection
+            kind="public"
             ticketId={ticket.id}
-            canAddComment={ticket.permissions.canAddPublicComment}
+            currentUserId={user?.id ?? -1}
+            canPost={ticket.permissions.canAddPublicComment}
+            closedMessage="This ticket is closed. New public comments are not accepted."
             refreshToken={commentRefreshToken}
             onPosted={() => {
               // The composer already appended the new entry locally; only
               // the Ticket's own fields (e.g. Last Updated) need a refresh.
               void load({ silent: true });
             }}
+            fetchEntries={fetchPublicComments}
+            postEntry={postPublicComment}
           />
         </>
       )}

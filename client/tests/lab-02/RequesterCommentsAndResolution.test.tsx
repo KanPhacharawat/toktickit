@@ -87,9 +87,10 @@ describe("UI-19 — Requester Public Comments (AC-23, AC-26)", () => {
 
     await openDetail(user);
 
-    const list = await screen.findByTestId("public-comment-list");
+    const list = await screen.findByTestId("public-thread-list");
     expect(within(list).getByText(/battery still drains/i)).toBeInTheDocument();
-    expect(within(list).getByText(REQUESTER.name)).toBeInTheDocument();
+    // The comment author is the signed-in Requester, so "(you)" is appended.
+    expect(within(list).getByText(new RegExp(`^${REQUESTER.name} \\(you\\)$`))).toBeInTheDocument();
     expect(within(list).getByText("Requester")).toBeInTheDocument();
   });
 

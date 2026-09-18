@@ -24,28 +24,40 @@ const prisma = getPrisma();
  */
 const PROTECTED_ROUTES: Array<{
   name: string;
-  method: "get" | "post" | "delete";
+  method: "get" | "post" | "patch" | "delete";
   path: string;
-  role: "any" | "Requester";
+  // "any": every role. "Requester" / "Staff": exclusive to that side.
+  // "shared": Requester (own) or Staff (any), with a different response
+  // shape per side — covered by its own dedicated test file, not the
+  // allow/deny matrix below, but still checked for 401/403-gate.
+  role: "any" | "Requester" | "Staff" | "shared";
 }> = [
   { name: "categories", method: "get", path: "/api/categories", role: "any" },
   { name: "related systems", method: "get", path: "/api/related-systems", role: "any" },
   { name: "create ticket", method: "post", path: "/api/tickets", role: "Requester" },
   { name: "my tickets", method: "get", path: "/api/tickets/mine", role: "Requester" },
-  { name: "ticket detail", method: "get", path: "/api/tickets/1", role: "Requester" },
-  { name: "attachment list", method: "get", path: "/api/tickets/1/attachments", role: "Requester" },
   { name: "attachment upload", method: "post", path: "/api/tickets/1/attachments", role: "Requester" },
-  { name: "attachment download", method: "get", path: "/api/tickets/1/attachments/1", role: "Requester" },
   { name: "attachment removal", method: "delete", path: "/api/tickets/1/attachments/1", role: "Requester" },
-  { name: "public comments list", method: "get", path: "/api/tickets/1/public-comments", role: "Requester" },
-  { name: "public comments post", method: "post", path: "/api/tickets/1/public-comments", role: "Requester" },
   { name: "problem resolved", method: "post", path: "/api/tickets/1/problem-resolved", role: "Requester" },
+  { name: "ticket detail", method: "get", path: "/api/tickets/1", role: "shared" },
+  { name: "attachment list", method: "get", path: "/api/tickets/1/attachments", role: "shared" },
+  { name: "attachment download", method: "get", path: "/api/tickets/1/attachments/1", role: "shared" },
+  { name: "public comments list", method: "get", path: "/api/tickets/1/public-comments", role: "shared" },
+  { name: "public comments post", method: "post", path: "/api/tickets/1/public-comments", role: "shared" },
+  { name: "assignable users", method: "get", path: "/api/users/assignable", role: "Staff" },
+  { name: "claim", method: "post", path: "/api/tickets/1/claim", role: "Staff" },
+  { name: "owner", method: "patch", path: "/api/tickets/1/owner", role: "Staff" },
+  { name: "it priority", method: "patch", path: "/api/tickets/1/it-priority", role: "Staff" },
+  { name: "status", method: "patch", path: "/api/tickets/1/status", role: "Staff" },
+  { name: "internal notes list", method: "get", path: "/api/tickets/1/internal-notes", role: "Staff" },
+  { name: "internal notes post", method: "post", path: "/api/tickets/1/internal-notes", role: "Staff" },
 ];
 
 /** Structural interface both `request(app)` and an authenticated agent satisfy. */
 interface RouteCaller {
   get(url: string): request.Test;
   post(url: string): request.Test;
+  patch(url: string): request.Test;
   delete(url: string): request.Test;
 }
 
@@ -125,6 +137,7 @@ describe("SEC-04 — password-change gate matrix (AC-02, BR-02)", () => {
 // ---------------------------------------------------------------------------
 describe("SEC-07 — role-restricted routes (AC-17, AC-20, AC-45, BR-05, BR-07, BR-25)", () => {
   const requesterOnly = PROTECTED_ROUTES.filter((r) => r.role === "Requester");
+  const staffOnly = PROTECTED_ROUTES.filter((r) => r.role === "Staff");
   const anyRole = PROTECTED_ROUTES.filter((r) => r.role === "any");
 
   it.each(["ITStaff", "Administrator"] as const)(
@@ -143,6 +156,17 @@ describe("SEC-07 — role-restricted routes (AC-17, AC-20, AC-45, BR-05, BR-07, 
       expect(await prisma.ticket.count()).toBe(ticketsBefore);
     },
   );
+
+  it("denies a Requester every Staff-only route with 403 (AC-17)", async () => {
+    const user = await createTestUser({ role: "Requester" });
+    const agent = await loginAgent(app, { email: user.email, password: user.password });
+
+    for (const route of staffOnly) {
+      const res = await call(agent, route);
+      expect(res.status, `Requester on ${route.name}`).toBe(403);
+      expect(res.body.error.code).toBe("FORBIDDEN");
+    }
+  });
 
   it.each(["Requester", "ITStaff", "Administrator"] as const)(
     "lets %s use every any-role route",
@@ -179,7 +203,10 @@ describe("SEC-07 — role-restricted routes (AC-17, AC-20, AC-45, BR-05, BR-07, 
 
 // ---------------------------------------------------------------------------
 describe("SEC-09 — check-order leaks (BR-08)", () => {
-  const malformedPath = "/api/tickets/abc";
+  // Internal Notes is Staff-exclusive, so a Requester is genuinely the
+  // "wrong role" here (ticket detail and the other Requester routes are now
+  // shared with Staff and can't demonstrate this case).
+  const malformedPath = "/api/tickets/abc/internal-notes";
 
   it("unauthenticated + invalid id → 401, not 400", async () => {
     const res = await request(app).get(malformedPath);
@@ -187,7 +214,7 @@ describe("SEC-09 — check-order leaks (BR-08)", () => {
   });
 
   it("gate + invalid id → 403 PASSWORD_CHANGE_REQUIRED, not 400", async () => {
-    const user = await createTestUser({ role: "Requester", mustChangePassword: true });
+    const user = await createTestUser({ role: "ITStaff", mustChangePassword: true });
     const agent = await loginAgent(app, { email: user.email, password: user.password });
 
     const res = await agent.get(malformedPath);
@@ -196,7 +223,7 @@ describe("SEC-09 — check-order leaks (BR-08)", () => {
   });
 
   it("wrong role + invalid id → 403 FORBIDDEN, not 400", async () => {
-    const user = await createTestUser({ role: "ITStaff" });
+    const user = await createTestUser({ role: "Requester" });
     const agent = await loginAgent(app, { email: user.email, password: user.password });
 
     const res = await agent.get(malformedPath);
@@ -205,7 +232,7 @@ describe("SEC-09 — check-order leaks (BR-08)", () => {
   });
 
   it("correct role + invalid id → 400 (the handler's own validation runs last)", async () => {
-    const user = await createTestUser({ role: "Requester" });
+    const user = await createTestUser({ role: "ITStaff" });
     const agent = await loginAgent(app, { email: user.email, password: user.password });
 
     const res = await agent.get(malformedPath);

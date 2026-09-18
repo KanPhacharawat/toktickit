@@ -964,3 +964,149 @@ export async function postInternalNote(ticketId: number, body: string): Promise<
   }
   return result.data;
 }
+
+// ---------------------------------------------------------------------------
+// Administrator User Management (Lab 3 api-spec.md §14)
+// ---------------------------------------------------------------------------
+
+export type AdminRole = "Requester" | "ITStaff" | "Administrator";
+
+export interface AdminUser {
+  id: number;
+  name: string;
+  email: string;
+  role: AdminRole;
+  isActive: boolean;
+  mustChangePassword: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminUserListParams {
+  search?: string;
+  role?: AdminRole | "";
+}
+
+export interface AdminUserListResponse {
+  data: AdminUser[];
+  meta: { totalItems: number };
+}
+
+export interface CreateAdminUserInput {
+  name: string;
+  email: string;
+  role: AdminRole;
+  isActive: boolean;
+  initialPassword: string;
+}
+
+export interface EditAdminUserInput {
+  name?: string;
+  email?: string;
+  role?: AdminRole;
+  isActive?: boolean;
+}
+
+export interface EditAdminUserResult {
+  data: AdminUser;
+  meta: { unassignedTicketCount: number; sessionsRevoked: boolean };
+}
+
+export interface SetInitialPasswordResult {
+  data: AdminUser;
+  meta: { sessionsRevoked: boolean };
+}
+
+async function adminRequest<T>(
+  path: string,
+  init: RequestInit,
+  failureMessage: string,
+): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      ...init,
+      credentials: "include",
+      headers: init.body
+        ? { "Content-Type": "application/json", ...init.headers }
+        : init.headers,
+    });
+  } catch {
+    throw new ApiError("Could not reach the server. Please try again.", {
+      status: 0,
+      code: "NETWORK_ERROR",
+    });
+  }
+  const body = await readJson(res);
+  if (!res.ok) {
+    notifyIfSessionExpired(res.status);
+    throw toApiError(res, body, failureMessage);
+  }
+  return body as T;
+}
+
+/** api-spec.md §14.1 — search + one role filter, sorted, not paginated. */
+export async function fetchAdminUsers(params: AdminUserListParams = {}): Promise<AdminUserListResponse> {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== "") query.set(key, String(value));
+  }
+  const suffix = query.toString() ? `?${query}` : "";
+  const body = await adminRequest<Partial<AdminUserListResponse>>(
+    `/api/admin/users${suffix}`,
+    { method: "GET" },
+    "Could not load users. Please try again.",
+  );
+  if (!Array.isArray(body.data) || !body.meta) {
+    throw new ApiError("The user list response was not understood.", {
+      status: 0,
+      code: "BAD_RESPONSE",
+    });
+  }
+  return { data: body.data, meta: body.meta };
+}
+
+/** api-spec.md §14.2. */
+export async function createAdminUser(input: CreateAdminUserInput): Promise<AdminUser> {
+  const body = await adminRequest<{ data?: AdminUser }>(
+    "/api/admin/users",
+    { method: "POST", body: JSON.stringify(input) },
+    "Could not create the user. Please try again.",
+  );
+  if (!body.data?.id) {
+    throw new ApiError("The response was not understood.", { status: 0, code: "BAD_RESPONSE" });
+  }
+  return body.data;
+}
+
+/** api-spec.md §14.4. */
+export async function updateAdminUser(
+  userId: number,
+  input: EditAdminUserInput,
+): Promise<EditAdminUserResult> {
+  const body = await adminRequest<Partial<EditAdminUserResult>>(
+    `/api/admin/users/${userId}`,
+    { method: "PATCH", body: JSON.stringify(input) },
+    "Could not update the user. Please try again.",
+  );
+  if (!body.data?.id || !body.meta) {
+    throw new ApiError("The response was not understood.", { status: 0, code: "BAD_RESPONSE" });
+  }
+  return { data: body.data, meta: body.meta };
+}
+
+/** api-spec.md §14.5. */
+export async function setAdminUserInitialPassword(
+  userId: number,
+  initialPassword: string,
+): Promise<SetInitialPasswordResult> {
+  const body = await adminRequest<Partial<SetInitialPasswordResult>>(
+    `/api/admin/users/${userId}/initial-password`,
+    { method: "POST", body: JSON.stringify({ initialPassword }) },
+    "Could not set the password. Please try again.",
+  );
+  if (!body.data?.id || !body.meta) {
+    throw new ApiError("The response was not understood.", { status: 0, code: "BAD_RESPONSE" });
+  }
+  return { data: body.data, meta: body.meta };
+}

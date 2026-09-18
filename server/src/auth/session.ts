@@ -138,3 +138,17 @@ export async function revokeOtherSessions(userId: number, keepSessionId: number)
     data: { revokedAt: new Date() },
   });
 }
+
+/**
+ * BR-22 / BR-55 — deactivation and a new initial password end every one of
+ * the target's sessions, including the caller's own if they are the target.
+ * Returns whether any live session was actually revoked (api-spec.md §14.4/§14.5
+ * `sessionsRevoked`).
+ */
+export async function revokeAllSessions(userId: number): Promise<boolean> {
+  const { count } = await getPrisma().session.updateMany({
+    where: { userId, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+  return count > 0;
+}

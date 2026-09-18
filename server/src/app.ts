@@ -6,6 +6,7 @@ import { attachmentsRouter } from "./attachments.js";
 import { commentsRouter } from "./comments.js";
 import { queueRouter } from "./queue.js";
 import { staffOperationsRouter } from "./staffOperations.js";
+import { adminUsersRouter } from "./adminUsers.js";
 import { authRouter } from "./auth/routes.js";
 import { bcryptCost } from "./auth/credentials.js";
 import { protect } from "./auth/middleware.js";
@@ -111,6 +112,7 @@ app.use(queueRouter);
 app.use(staffOperationsRouter);
 app.use(attachmentsRouter);
 app.use(commentsRouter);
+app.use(adminUsersRouter);
 
 // api-spec.md §1.1 — any unmatched /api route, including a removed Lab 2
 // one, answers the documented envelope instead of Express's default HTML.

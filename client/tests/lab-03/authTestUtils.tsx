@@ -40,6 +40,7 @@ export function stubLab2Screens() {
       counts: { active: 0, unassigned: 0, assignedToMe: 0 },
     },
   });
+  vi.spyOn(api, "fetchAdminUsers").mockResolvedValue({ data: [], meta: { totalItems: 0 } });
 }
 
 /** Renders the whole app with the given session (null = signed out). */

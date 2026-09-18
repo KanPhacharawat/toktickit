@@ -79,7 +79,7 @@ async function openTicketDetail(
         ticketDate: ticketDetailData.ticketDate,
         summary: ticketDetailData.summary,
         category: ticketDetailData.category,
-        requester: ticketDetailData.requester,
+        requester: { ...ticketDetailData.requester, email: ticketDetailData.requester.email ?? "" },
         requestedPriority: ticketDetailData.requestedPriority,
         itPriority: ticketDetailData.itPriority,
         currentStatus: ticketDetailData.currentStatus,
@@ -97,8 +97,13 @@ async function openTicketDetail(
     },
   });
   vi.spyOn(api, "fetchStaffTicketDetail").mockResolvedValue(ticketDetailData);
+  vi.spyOn(api, "fetchAdminUsers").mockResolvedValue({ data: [], meta: { totalItems: 0 } });
 
   render(<App />);
+  // An Administrator's home is User Management; the queue is a second stop.
+  if (signedInAs.role === "Administrator") {
+    await user.click(await screen.findByRole("button", { name: /^ticket queue$/i }));
+  }
   await user.click(await screen.findByRole("button", { name: new RegExp(ticketDetailData.ticketNumber) }));
   await screen.findByTestId("detail-ticket-number");
 }

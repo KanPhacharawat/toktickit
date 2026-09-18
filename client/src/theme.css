@@ -351,6 +351,19 @@ body {
   color: var(--zen-error);
 }
 
+/* --- Lab 3 threads (Internal Notes) ------------------------------------- */
+
+/* Internal Notes carry a 5px amber left border so they are never mistaken
+   for the public thread beside them (ui-spec.md §10.2). */
+.zen-internal-notes {
+  border-left: 5px solid var(--zen-warning);
+}
+
+.zen-warning-badge {
+  background-color: #fdf6e8;
+  color: var(--zen-warning);
+}
+
 .zen-removal-form {
   background-color: var(--zen-surface);
   border: 1px solid var(--zen-border);

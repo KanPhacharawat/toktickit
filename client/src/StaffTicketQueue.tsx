@@ -83,7 +83,11 @@ function hasActiveFilters(controls: Controls): boolean {
   );
 }
 
-export default function StaffTicketQueue() {
+export default function StaffTicketQueue({
+  onOpenTicket,
+}: {
+  onOpenTicket?: (ticketId: number) => void;
+}) {
   const { user } = useAuth();
 
   const [controls, setControls] = useState<Controls>(DEFAULT_CONTROLS);
@@ -528,7 +532,20 @@ export default function StaffTicketQueue() {
                 {rows.map((row) => (
                   <tr key={row.id}>
                     <td className="text-nowrap">
-                      <div className="fw-semibold">{row.ticketNumber}</div>
+                      <div className="fw-semibold">
+                        {onOpenTicket ? (
+                          <button
+                            type="button"
+                            className="zen-link-button"
+                            onClick={() => onOpenTicket(row.id)}
+                          >
+                            {row.ticketNumber}
+                            <span className="visually-hidden"> — open detail</span>
+                          </button>
+                        ) : (
+                          row.ticketNumber
+                        )}
+                      </div>
                       <div className="text-secondary small">
                         {new Date(row.ticketDate).toLocaleDateString()}
                       </div>

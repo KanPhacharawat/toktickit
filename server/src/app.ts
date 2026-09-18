@@ -5,6 +5,7 @@ import { ticketsRouter } from "./tickets.js";
 import { attachmentsRouter } from "./attachments.js";
 import { commentsRouter } from "./comments.js";
 import { queueRouter } from "./queue.js";
+import { staffOperationsRouter } from "./staffOperations.js";
 import { authRouter } from "./auth/routes.js";
 import { bcryptCost } from "./auth/credentials.js";
 import { protect } from "./auth/middleware.js";
@@ -107,6 +108,7 @@ app.use(ticketsRouter);
 // before attachmentsRouter's "/api/tickets/:ticketId", or Express would try
 // to treat "queue" as a ticket id and never reach this route.
 app.use(queueRouter);
+app.use(staffOperationsRouter);
 app.use(attachmentsRouter);
 app.use(commentsRouter);
 

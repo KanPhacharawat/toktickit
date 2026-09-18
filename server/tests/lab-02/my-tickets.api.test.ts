@@ -1,7 +1,8 @@
-﻿import { describe, it, expect, beforeAll, afterAll, vi, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi, afterEach } from "vitest";
 import { app } from "../../src/app.js";
 import { getPrisma } from "../../src/prisma.js";
 import { loginAgent, type AuthedAgent } from "../authHelper.js";
+import { createTestUser, removeTestUsers } from "../lab-03/helpers.js";
 import {
   parseTicketListQuery,
   DEFAULT_PAGE_SIZE,
@@ -9,7 +10,7 @@ import {
 } from "../../src/ticketListQuery.js";
 
 // Integration test: needs the database migrated and seeded first.
-//   npx prisma migrate dev
+//   npx prisma migrate deploy
 //   npm run prisma:seed
 const prisma = getPrisma();
 
@@ -21,11 +22,10 @@ let otherId: number;
 let categoryA: number;
 let categoryB: number;
 let systemId: number;
-// Lab 3 â€” these routes are gated to the Requester role. The login identity
-// is unrelated to `ownerId`/`otherId`, the fixture rows this suite tests
-// data ownership against (still keyed on the `:requesterId` path parameter,
-// unchanged from Lab 2).
-let agent: AuthedAgent;
+// Lab 3 BR-03 — ownership comes from the session, so each fixture requester
+// is a real login identity, not just a `requesterId` in a URL.
+let ownerAgent: AuthedAgent;
+let otherAgent: AuthedAgent;
 
 interface ListRow {
   id: number;
@@ -46,15 +46,7 @@ const FIXTURES = [
   { suffix: "0005", summary: `${TAG} Printer offline again`, priority: "LOW", status: "New" },
 ] as const;
 
-const listUrl = (requesterId: number) =>
-  `/api/requesters/${requesterId}/tickets`;
-
-/**
- * Dedicated fixture requesters, so this suite's absolute counts cannot be
- * disturbed by the seeded requesters' real tickets or by another suite.
- */
-const OWNER_EMAIL = "my-tickets-owner@test.invalid";
-const OTHER_EMAIL = "my-tickets-other@test.invalid";
+const LIST_URL = "/api/tickets/mine";
 
 async function removeFixtures() {
   await prisma.ticket.deleteMany({ where: { summary: { contains: TAG } } });
@@ -62,18 +54,8 @@ async function removeFixtures() {
 
 beforeAll(async () => {
   const [owner, other, categories, system] = await Promise.all([
-    prisma.user.upsert({
-      where: { email: OWNER_EMAIL },
-      update: { isActive: true, deletedAt: null },
-      create: { name: "My Tickets Owner", email: OWNER_EMAIL, isActive: true },
-      select: { id: true },
-    }),
-    prisma.user.upsert({
-      where: { email: OTHER_EMAIL },
-      update: { isActive: true, deletedAt: null },
-      create: { name: "My Tickets Other", email: OTHER_EMAIL, isActive: true },
-      select: { id: true },
-    }),
+    createTestUser({ name: "My Tickets Owner" }),
+    createTestUser({ name: "My Tickets Other" }),
     prisma.category.findMany({
       where: { isActive: true },
       orderBy: { id: "asc" },
@@ -113,12 +95,13 @@ beforeAll(async () => {
         summary: fixture.summary,
         description: `Seeded by the My Tickets API test suite (${fixture.suffix}).`,
         requestedPriority: fixture.priority,
+        itPriority: fixture.priority,
         currentStatus: fixture.status,
       },
     });
   }
 
-  // One ticket owned by a different requester â€” it must never appear.
+  // One ticket owned by a different requester — it must never appear.
   await prisma.ticket.create({
     data: {
       ticketNumber: "TT-20260901-9999",
@@ -128,10 +111,12 @@ beforeAll(async () => {
       summary: `${TAG} Other requester ticket`,
       description: "Owned by a different requester; must stay invisible.",
       requestedPriority: "LOW",
+      itPriority: "LOW",
     },
   });
 
-  agent = await loginAgent(app);
+  ownerAgent = await loginAgent(app, { email: owner.email, password: owner.password });
+  otherAgent = await loginAgent(app, { email: other.email, password: other.password });
 });
 
 afterEach(() => {
@@ -140,16 +125,14 @@ afterEach(() => {
 
 afterAll(async () => {
   await removeFixtures();
-  await prisma.user.deleteMany({
-    where: { email: { in: [OWNER_EMAIL, OTHER_EMAIL] } },
-  });
+  await removeTestUsers();
   await prisma.$disconnect();
 });
 
 // ---------------------------------------------------------------------------
-// Query parsing â€” unit coverage (BR-25, BR-26)
+// Query parsing — unit coverage (BR-25, BR-26)
 // ---------------------------------------------------------------------------
-describe("API-11 â€” ticket list query validation (BR-25, BR-26)", () => {
+describe("API-11 — ticket list query validation (BR-25, BR-26)", () => {
   it("applies the documented defaults (BR-24)", () => {
     const { query } = parseTicketListQuery({});
     expect(query).toMatchObject({
@@ -206,11 +189,11 @@ describe("API-11 â€” ticket list query validation (BR-25, BR-26)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// API-06 â€” ownership (AC-11)
+// API-06 — ownership (AC-11, Lab 3 AC-03)
 // ---------------------------------------------------------------------------
-describe("API-06 â€” requester ownership list (AC-11)", () => {
-  it("returns only tickets owned by the requester", async () => {
-    const res = await agent.get(listUrl(ownerId)).query({ pageSize: 50 });
+describe("API-06 — requester ownership list (AC-11)", () => {
+  it("returns only tickets owned by the signed-in requester", async () => {
+    const res = await ownerAgent.get(LIST_URL).query({ pageSize: 50 });
 
     expect(res.status).toBe(200);
     const numbers = res.body.data.map((t: ListRow) => t.ticketNumber);
@@ -218,8 +201,8 @@ describe("API-06 â€” requester ownership list (AC-11)", () => {
     expect(numbers).not.toContain("TT-20260901-9999");
   });
 
-  it("does not leak the owner's tickets to another requester", async () => {
-    const res = await agent.get(listUrl(otherId)).query({ pageSize: 50 });
+  it("does not leak the owner's tickets to another requester's session", async () => {
+    const res = await otherAgent.get(LIST_URL).query({ pageSize: 50 });
 
     const numbers = res.body.data.map((t: ListRow) => t.ticketNumber);
     expect(numbers).toContain("TT-20260901-9999");
@@ -228,43 +211,42 @@ describe("API-06 â€” requester ownership list (AC-11)", () => {
     }
   });
 
-  it("returns an empty page for a requester with no tickets", async () => {
-    const res = await agent.get(listUrl(999999));
+  it("ignores a client-supplied requesterId query parameter (BR-03, AC-03)", async () => {
+    const res = await otherAgent.get(LIST_URL).query({ requesterId: ownerId, pageSize: 50 });
 
-    expect(res.status).toBe(200);
-    expect(res.body.data).toEqual([]);
-    expect(res.body.meta.totalItems).toBe(0);
-  });
-
-  it("rejects a non-numeric requester id", async () => {
-    const res = await agent.get("/api/requesters/abc/tickets");
-    expect(res.status).toBe(400);
-    expect(res.body.error.code).toBe("VALIDATION_ERROR");
+    // Still scoped to the caller (other), never to the spoofed owner.
+    const numbers = res.body.data.map((t: ListRow) => t.ticketNumber);
+    expect(numbers).toContain("TT-20260901-9999");
+    expect(numbers).not.toContain("TT-20260901-0001");
   });
 
   it("returns the documented row shape", async () => {
-    const res = await agent.get(listUrl(ownerId));
+    const res = await ownerAgent.get(LIST_URL);
 
     expect(Object.keys(res.body.data[0]).sort()).toEqual([
       "category",
       "currentStatus",
       "id",
+      "problemAppearsResolvedAt",
       "requestedPriority",
       "summary",
       "ticketNumber",
+      "ticketOwner",
       "updatedAt",
     ]);
     // Category is the display name, not an object.
     expect(typeof res.body.data[0].category).toBe("string");
+    // New Tickets are unassigned (BR-33).
+    expect(res.body.data[0].ticketOwner).toBeNull();
   });
 });
 
 // ---------------------------------------------------------------------------
-// API-08 â€” search (AC-13)
+// API-08 — search (AC-13)
 // ---------------------------------------------------------------------------
-describe("API-08 â€” ticket search (AC-13)", () => {
+describe("API-08 — ticket search (AC-13)", () => {
   it("matches the ticket summary", async () => {
-    const res = await agent.get(listUrl(ownerId)).query({ search: "Printer" });
+    const res = await ownerAgent.get(LIST_URL).query({ search: "Printer" });
 
     const summaries = res.body.data.map((t: ListRow) => t.summary);
     expect(summaries).toHaveLength(2);
@@ -272,15 +254,15 @@ describe("API-08 â€” ticket search (AC-13)", () => {
   });
 
   it("matches the ticket number", async () => {
-    const res = await agent.get(listUrl(ownerId)).query({ search: "TT-20260901-0002" });
+    const res = await ownerAgent.get(LIST_URL).query({ search: "TT-20260901-0002" });
 
     expect(res.body.data).toHaveLength(1);
     expect(res.body.data[0].ticketNumber).toBe("TT-20260901-0002");
   });
 
   it("is case-insensitive", async () => {
-    const lower = await agent.get(listUrl(ownerId)).query({ search: "printer" });
-    const upper = await agent.get(listUrl(ownerId)).query({ search: "PRINTER" });
+    const lower = await ownerAgent.get(LIST_URL).query({ search: "printer" });
+    const upper = await ownerAgent.get(LIST_URL).query({ search: "PRINTER" });
 
     expect(lower.body.meta.totalItems).toBe(upper.body.meta.totalItems);
     expect(upper.body.meta.totalItems).toBe(2);
@@ -288,13 +270,13 @@ describe("API-08 â€” ticket search (AC-13)", () => {
 
   it("stays inside the owner scope", async () => {
     // "Other requester ticket" exists, but not for this owner.
-    const res = await agent.get(listUrl(ownerId)).query({ search: "Other requester" });
+    const res = await ownerAgent.get(LIST_URL).query({ search: "Other requester" });
     expect(res.body.data).toHaveLength(0);
   });
 
   it("returns an empty page when nothing matches (BR-27)", async () => {
-    const res = await agent
-      .get(listUrl(ownerId))
+    const res = await ownerAgent
+      .get(LIST_URL)
       .query({ search: "nothing-matches-this-term" });
 
     expect(res.status).toBe(200);
@@ -304,11 +286,11 @@ describe("API-08 â€” ticket search (AC-13)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// API-09 â€” filters (AC-14)
+// API-09 — filters (AC-14)
 // ---------------------------------------------------------------------------
-describe("API-09 â€” ticket filters (AC-14)", () => {
+describe("API-09 — ticket filters (AC-14)", () => {
   it("filters by requested priority", async () => {
-    const res = await agent.get(listUrl(ownerId)).query({ requestedPriority: "LOW" });
+    const res = await ownerAgent.get(LIST_URL).query({ requestedPriority: "LOW" });
 
     expect(res.body.data).toHaveLength(2);
     expect(
@@ -317,30 +299,30 @@ describe("API-09 â€” ticket filters (AC-14)", () => {
   });
 
   it("filters by current status", async () => {
-    const res = await agent.get(listUrl(ownerId)).query({ currentStatus: "New" });
+    const res = await ownerAgent.get(LIST_URL).query({ currentStatus: "New" });
 
     expect(res.body.data).toHaveLength(3);
     expect(res.body.data.every((t: ListRow) => t.currentStatus === "New")).toBe(true);
   });
 
   it("filters by category", async () => {
-    const res = await agent.get(listUrl(ownerId)).query({ categoryId: categoryB });
+    const res = await ownerAgent.get(LIST_URL).query({ categoryId: categoryB });
 
     // Fixtures at odd indexes use category B.
     expect(res.body.data).toHaveLength(2);
   });
 
   it("combines filters and search", async () => {
-    const res = await agent
-      .get(listUrl(ownerId))
+    const res = await ownerAgent
+      .get(LIST_URL)
       .query({ search: "Printer", requestedPriority: "LOW" });
 
     expect(res.body.data).toHaveLength(2);
   });
 
   it("returns nothing when filters exclude every ticket", async () => {
-    const res = await agent
-      .get(listUrl(ownerId))
+    const res = await ownerAgent
+      .get(LIST_URL)
       .query({ requestedPriority: "URGENT", currentStatus: "New" });
 
     expect(res.body.data).toHaveLength(0);
@@ -348,8 +330,8 @@ describe("API-09 â€” ticket filters (AC-14)", () => {
   });
 
   it("rejects an invalid filter value with 400", async () => {
-    const res = await agent
-      .get(listUrl(ownerId))
+    const res = await ownerAgent
+      .get(LIST_URL)
       .query({ requestedPriority: "CRITICAL" });
 
     expect(res.status).toBe(400);
@@ -358,11 +340,11 @@ describe("API-09 â€” ticket filters (AC-14)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// API-10 â€” sorting (AC-15)
+// API-10 — sorting (AC-15)
 // ---------------------------------------------------------------------------
-describe("API-10 â€” ticket sorting (AC-15)", () => {
+describe("API-10 — ticket sorting (AC-15)", () => {
   it("defaults to last updated descending (BR-24)", async () => {
-    const res = await agent.get(listUrl(ownerId)).query({ pageSize: 50 });
+    const res = await ownerAgent.get(LIST_URL).query({ pageSize: 50 });
 
     const updated = res.body.data.map((t: ListRow) => new Date(t.updatedAt).getTime());
     expect(updated).toEqual([...updated].sort((a, b) => b - a));
@@ -371,11 +353,11 @@ describe("API-10 â€” ticket sorting (AC-15)", () => {
   });
 
   it("sorts by ticket number in both directions", async () => {
-    const asc = await agent
-      .get(listUrl(ownerId))
+    const asc = await ownerAgent
+      .get(LIST_URL)
       .query({ sortBy: "ticketNumber", sortOrder: "asc", pageSize: 50 });
-    const desc = await agent
-      .get(listUrl(ownerId))
+    const desc = await ownerAgent
+      .get(LIST_URL)
       .query({ sortBy: "ticketNumber", sortOrder: "desc", pageSize: 50 });
 
     const ascNumbers = asc.body.data.map((t: ListRow) => t.ticketNumber);
@@ -386,8 +368,8 @@ describe("API-10 â€” ticket sorting (AC-15)", () => {
   });
 
   it("sorts by ticket date ascending", async () => {
-    const res = await agent
-      .get(listUrl(ownerId))
+    const res = await ownerAgent
+      .get(LIST_URL)
       .query({ sortBy: "ticketDate", sortOrder: "asc", pageSize: 50 });
 
     expect(res.body.data[0].ticketNumber).toBe("TT-20260901-0001");
@@ -404,7 +386,7 @@ describe("API-10 â€” ticket sorting (AC-15)", () => {
       data: { updatedAt: shared },
     });
 
-    const res = await agent.get(listUrl(ownerId)).query({ pageSize: 50 });
+    const res = await ownerAgent.get(LIST_URL).query({ pageSize: 50 });
     const numbers = res.body.data.map((t: ListRow) => t.ticketNumber);
 
     expect(numbers[0]).toBe("TT-20260901-0002");
@@ -423,24 +405,24 @@ describe("API-10 â€” ticket sorting (AC-15)", () => {
   });
 
   it("rejects an unsupported sort field with 400", async () => {
-    const res = await agent.get(listUrl(ownerId)).query({ sortBy: "summary" });
+    const res = await ownerAgent.get(LIST_URL).query({ sortBy: "summary" });
 
     expect(res.status).toBe(400);
     expect(res.body.error.fieldErrors.sortBy).toEqual(expect.any(String));
   });
 
   it("rejects an unsupported sort order with 400", async () => {
-    const res = await agent.get(listUrl(ownerId)).query({ sortOrder: "sideways" });
+    const res = await ownerAgent.get(LIST_URL).query({ sortOrder: "sideways" });
     expect(res.status).toBe(400);
   });
 });
 
 // ---------------------------------------------------------------------------
-// API-11 â€” pagination (AC-16)
+// API-11 — pagination (AC-16)
 // ---------------------------------------------------------------------------
-describe("API-11 â€” pagination (AC-16)", () => {
+describe("API-11 — pagination (AC-16)", () => {
   it("returns accurate pagination metadata", async () => {
-    const res = await agent.get(listUrl(ownerId)).query({ pageSize: 10 });
+    const res = await ownerAgent.get(LIST_URL).query({ pageSize: 10 });
 
     expect(res.body.meta).toEqual({
       page: 1,
@@ -451,8 +433,8 @@ describe("API-11 â€” pagination (AC-16)", () => {
   });
 
   it("returns only the requested page", async () => {
-    const first = await agent
-      .get(listUrl(ownerId))
+    const first = await ownerAgent
+      .get(LIST_URL)
       .query({ pageSize: 10, page: 1, sortBy: "ticketNumber", sortOrder: "asc" });
 
     // pageSize 10 is the smallest supported size, so page through with it
@@ -460,8 +442,8 @@ describe("API-11 â€” pagination (AC-16)", () => {
     expect(first.body.data).toHaveLength(FIXTURES.length);
     expect(first.body.meta.totalPages).toBe(1);
 
-    const second = await agent
-      .get(listUrl(ownerId))
+    const second = await ownerAgent
+      .get(LIST_URL)
       .query({ pageSize: 10, page: 2, sortBy: "ticketNumber", sortOrder: "asc" });
 
     // A page beyond the end is valid and simply empty.
@@ -472,8 +454,8 @@ describe("API-11 â€” pagination (AC-16)", () => {
   });
 
   it("counts every match, not just the current page", async () => {
-    const res = await agent
-      .get(listUrl(ownerId))
+    const res = await ownerAgent
+      .get(LIST_URL)
       .query({ pageSize: 10, search: "Printer" });
 
     expect(res.body.meta.totalItems).toBe(2);
@@ -481,7 +463,7 @@ describe("API-11 â€” pagination (AC-16)", () => {
   });
 
   it("rejects an unsupported page size with 400 (BR-26)", async () => {
-    const res = await agent.get(listUrl(ownerId)).query({ pageSize: 15 });
+    const res = await ownerAgent.get(LIST_URL).query({ pageSize: 15 });
 
     expect(res.status).toBe(400);
     expect(res.body.error.fieldErrors.pageSize).toEqual(expect.any(String));
@@ -489,7 +471,7 @@ describe("API-11 â€” pagination (AC-16)", () => {
 
   it("rejects page 0 and negative pages with 400 (BR-26)", async () => {
     for (const page of ["0", "-3"]) {
-      const res = await agent.get(listUrl(ownerId)).query({ page });
+      const res = await ownerAgent.get(LIST_URL).query({ page });
       expect(res.status).toBe(400);
       expect(res.body.error.fieldErrors.page).toEqual(expect.any(String));
     }
@@ -497,49 +479,31 @@ describe("API-11 â€” pagination (AC-16)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// The /api/tickets alias
+// Removed Lab 2 routes (Lab 3 FR-19, SEC-11)
 // ---------------------------------------------------------------------------
-describe("GET /api/tickets", () => {
-  it("returns the same list when given a requesterId", async () => {
-    const viaPath = await agent.get(listUrl(ownerId)).query({ pageSize: 50 });
-    const viaQuery = await agent
-      .get("/api/tickets")
-      .query({ requesterId: ownerId, pageSize: 50 });
-
-    expect(viaQuery.status).toBe(200);
-    expect(viaQuery.body).toEqual(viaPath.body);
+describe("Removed Lab 2 routes", () => {
+  it("no longer serves the requesterId-scoped list route", async () => {
+    const res = await ownerAgent.get(`/api/requesters/${ownerId}/tickets`);
+    expect(res.status).toBe(404);
   });
 
-  it("requires a requester (BR-06)", async () => {
-    const res = await agent.get("/api/tickets");
-
-    expect(res.status).toBe(400);
-    expect(res.body.error.fieldErrors.requesterId).toEqual(expect.any(String));
-  });
-
-  it("honours filters and sorting like the documented route", async () => {
-    const res = await agent
-      .get("/api/tickets")
-      .query({ requesterId: ownerId, search: "Printer", sortBy: "ticketNumber", sortOrder: "asc" });
-
-    expect(res.body.data.map((t: ListRow) => t.ticketNumber)).toEqual([
-      "TT-20260901-0001",
-      "TT-20260901-0005",
-    ]);
+  it("GET /api/tickets no longer serves the Lab 2 list route", async () => {
+    const res = await ownerAgent.get("/api/tickets").query({ requesterId: ownerId });
+    expect(res.status).toBe(404);
   });
 });
 
 // ---------------------------------------------------------------------------
-// AC-23 / BR-39 â€” unexpected errors stay safe
+// AC-23 / BR-39 — unexpected errors stay safe
 // ---------------------------------------------------------------------------
-describe("GET ticket list â€” unexpected failure", () => {
+describe("GET ticket list — unexpected failure", () => {
   it("returns a safe 500 without leaking internals", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(prisma.ticket, "count").mockRejectedValue(
       new Error('Invalid `prisma.ticket.count()` at C:\\repo\\server\\src\\tickets.ts:88'),
     );
 
-    const res = await agent.get(listUrl(ownerId));
+    const res = await ownerAgent.get(LIST_URL);
 
     expect(res.status).toBe(500);
     expect(res.body.error.message).toBe("Could not load tickets. Please try again.");

@@ -26,12 +26,10 @@ function typeLabel(mimeType: string): string {
 }
 
 export default function AttachmentSection({
-  requesterId,
   ticketId,
   attachments,
   onChanged,
 }: {
-  requesterId: number;
   ticketId: number;
   attachments: AttachmentMetadata[];
   /** Called after a successful upload or removal so the parent can refresh. */
@@ -82,7 +80,7 @@ export default function AttachmentSection({
       // than raced past.
       for (const candidate of accepted) {
         try {
-          await uploadAttachment(requesterId, ticketId, candidate.file);
+          await uploadAttachment(ticketId, candidate.file);
         } catch (err) {
           failures.push(
             `${candidate.name}: ${
@@ -123,12 +121,7 @@ export default function AttachmentSection({
     setRemovalPending(true);
     setRemovalError("");
     try {
-      await removeAttachment(
-        requesterId,
-        ticketId,
-        removingId,
-        removalReason.trim(),
-      );
+      await removeAttachment(ticketId, removingId, removalReason.trim());
       setRemovingId(null);
       setRemovalReason("");
       await onChanged();
@@ -234,11 +227,7 @@ export default function AttachmentSection({
                     <>
                       <a
                         className="btn btn-sm zen-btn-outline"
-                        href={attachmentDownloadUrl(
-                          requesterId,
-                          ticketId,
-                          attachment.id,
-                        )}
+                        href={attachmentDownloadUrl(ticketId, attachment.id)}
                         download={attachment.originalFilename}
                       >
                         Download

@@ -25,8 +25,11 @@ export const STAFF: CurrentUser = {
 
 /** Stubs the Lab 2 screens behind the gate so these suites stay on auth. */
 export function stubLab2Screens() {
-  vi.spyOn(api, "fetchActiveRequesters").mockResolvedValue([]);
   vi.spyOn(api, "fetchCategories").mockResolvedValue([]);
+  vi.spyOn(api, "fetchMyTickets").mockResolvedValue({
+    data: [],
+    meta: { page: 1, pageSize: 10, totalItems: 0, totalPages: 0 },
+  });
 }
 
 /** Renders the whole app with the given session (null = signed out). */

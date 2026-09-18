@@ -1,14 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Lab2App from "../../src/Lab2App.js";
 import * as api from "../../src/api.js";
-import { MAX_FILE_SIZE_BYTES } from "../../src/attachmentRules.js";
-
-const REQUESTERS: api.DevelopmentRequester[] = [
-  { id: 11, name: "Alpha Requester", email: "alpha@example.com", department: "Finance" },
-  { id: 22, name: "Beta Requester", email: "beta@example.com", department: "Library" },
-];
+import { renderAsRequester, REQUESTER } from "./testAuth.js";
 
 const LIST_ROW: api.TicketListRow = {
   id: 101,
@@ -17,6 +12,8 @@ const LIST_ROW: api.TicketListRow = {
   category: "Hardware",
   requestedPriority: "LOW",
   currentStatus: "New",
+  ticketOwner: null,
+  problemAppearsResolvedAt: null,
   updatedAt: "2026-09-05T12:30:00.000Z",
 };
 
@@ -40,41 +37,39 @@ function detail(overrides: Partial<api.TicketDetail> = {}): api.TicketDetail {
     id: 101,
     ticketNumber: "TT-20260905-0001",
     ticketDate: "2026-09-05T12:30:00.000Z",
-    requester: { id: 11, name: "Alpha Requester" },
+    requester: { id: REQUESTER.id, name: REQUESTER.name },
     category: { id: 2, name: "Hardware" },
     relatedSystem: { id: 4, name: "Corporate Laptop" },
     summary: "Printer jams constantly",
     description: "The office printer jams on every multi-page job.",
     requestedPriority: "LOW",
     currentStatus: "New",
+    ticketOwner: null,
+    problemAppearsResolvedAt: null,
     createdAt: "2026-09-05T12:30:00.000Z",
     updatedAt: "2026-09-05T12:30:00.000Z",
     attachments: [],
+    permissions: {
+      canManageAttachments: true,
+      canAddPublicComment: true,
+      canReportProblemResolved: false,
+    },
     ...overrides,
   };
 }
 
 function mockShell() {
-  vi.spyOn(api, "fetchActiveRequesters").mockResolvedValue(REQUESTERS);
   vi.spyOn(api, "fetchCategories").mockResolvedValue([]);
   vi.spyOn(api, "fetchMyTickets").mockResolvedValue({
     data: [LIST_ROW],
     meta: { page: 1, pageSize: 10, totalItems: 1, totalPages: 1 },
   });
+  vi.spyOn(api, "fetchPublicComments").mockResolvedValue([]);
 }
 
-/** Selects a requester, then opens the ticket from the list. */
-async function openDetail(
-  user: ReturnType<typeof userEvent.setup>,
-  requester: RegExp = /Alpha Requester/,
-) {
-  render(<Lab2App />);
-
-  await user.selectOptions(
-    await screen.findByLabelText(/development requester/i),
-    screen.getByRole("option", { name: requester }),
-  );
-  await user.click(screen.getByRole("button", { name: /continue/i }));
+/** Signs in as the fixture Requester, then opens the ticket from the list. */
+async function openDetail(user: ReturnType<typeof userEvent.setup>) {
+  renderAsRequester(<Lab2App />);
 
   await user.click(await screen.findByRole("button", { name: /TT-20260905-0001/ }));
   await screen.findByRole("heading", { name: /ticket detail/i });
@@ -105,12 +100,13 @@ describe("UI-10 — Ticket Detail and ownership state (AC-12, AC-23)", () => {
 
     await openDetail(user);
 
-    // Scoped to the selected requester and the chosen ticket.
-    expect(spy).toHaveBeenCalledWith(11, 101);
+    // Scoped to the chosen ticket; ownership comes from the session.
+    expect(spy).toHaveBeenCalledWith(101);
 
     expect(await screen.findByTestId("detail-ticket-number")).toHaveTextContent(
       "TT-20260905-0001",
     );
+    const info = screen.getByRole("region", { name: /ticket information/i });
     for (const label of [
       /ticket number/i,
       /ticket date/i,
@@ -122,7 +118,7 @@ describe("UI-10 — Ticket Detail and ownership state (AC-12, AC-23)", () => {
       /ticket summary/i,
       /^description$/i,
     ]) {
-      expect(screen.getByText(label)).toBeInTheDocument();
+      expect(within(info).getByText(label)).toBeInTheDocument();
     }
     expect(screen.getByTestId("detail-status")).toHaveTextContent("New");
     expect(screen.getByTestId("detail-description")).toHaveTextContent(
@@ -175,12 +171,12 @@ describe("UI-10 — Ticket Detail and ownership state (AC-12, AC-23)", () => {
   // -------------------------------------------------------------------------
   // UI-10 — ownership failure (AC-12)
   // -------------------------------------------------------------------------
-  it("shows a safe state when the ticket belongs to another requester", async () => {
+  it("shows a safe state when the ticket belongs to another requester (Lab 3 BR-09)", async () => {
     const user = userEvent.setup();
     vi.spyOn(api, "fetchTicketDetail").mockRejectedValue(
-      new api.ApiError("You do not have access to this ticket.", {
-        status: 403,
-        code: "FORBIDDEN",
+      new api.ApiError("Ticket not found.", {
+        status: 404,
+        code: "NOT_FOUND",
       }),
     );
 
@@ -188,8 +184,9 @@ describe("UI-10 — Ticket Detail and ownership state (AC-12, AC-23)", () => {
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent(/not available/i);
-    // BR-09 — nothing about the real owner is shown.
-    expect(alert.textContent).not.toMatch(/Beta Requester|owner|owned by/i);
+    // BR-09 — nothing about the real owner is shown; identical to a
+    // nonexistent ticket id.
+    expect(alert.textContent).not.toMatch(/owner|owned by/i);
     // No ticket data leaks onto the screen.
     expect(screen.queryByTestId("detail-ticket-number")).not.toBeInTheDocument();
     expect(screen.queryByTestId("detail-description")).not.toBeInTheDocument();

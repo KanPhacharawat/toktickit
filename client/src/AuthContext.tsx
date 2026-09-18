@@ -9,6 +9,10 @@ import {
 } from "react";
 import * as authApi from "./authApi.js";
 import type { CurrentUser } from "./authApi.js";
+import { setSessionExpiredHandler } from "./api.js";
+
+/** Lab 3 §7.7 — the obsolete Lab 2 selection key, removed on every start-up. */
+const OBSOLETE_REQUESTER_STORAGE_KEY = "toktickit.lab2.selectedRequesterId";
 
 // Signed-in state for the whole app (Lab 3 ui-spec.md §2.3, §3).
 //
@@ -47,6 +51,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [checkToken, setCheckToken] = useState(0);
 
   useEffect(() => {
+    // Lab 3 §7.7 — identity is held only in memory; any leftover Lab 2
+    // selection is removed once, on start-up.
+    try {
+      window.localStorage.removeItem(OBSOLETE_REQUESTER_STORAGE_KEY);
+    } catch {
+      /* storage can be unavailable; nothing to clean up either way */
+    }
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     setStatus("checking");
 
@@ -65,6 +79,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cancelled = true;
     };
   }, [checkToken]);
+
+  // ui-spec.md §2.3 — any API 401 from any screen ends the session the same
+  // way: clear state, show Login with the "session has ended" message.
+  useEffect(() => {
+    setSessionExpiredHandler(() => {
+      setUser(null);
+      setFlash("");
+      setChangingPassword(false);
+      setNotice("Your session has ended. Please sign in again.");
+      setStatus("signedOut");
+    });
+    return () => setSessionExpiredHandler(null);
+  }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
     const signedIn = await authApi.login(email, password);

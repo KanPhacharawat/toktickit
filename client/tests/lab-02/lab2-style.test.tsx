@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Lab2App from "../../src/Lab2App.js";
 import * as api from "../../src/api.js";
+import { renderAsRequester } from "./testAuth.js";
 
 // UI Style tests — STYLE-01, STYLE-02, STYLE-03.
 //
@@ -19,15 +20,10 @@ const THEME_CSS = readFileSync(
   "utf8",
 );
 
-const REQUESTERS: api.DevelopmentRequester[] = [
-  { id: 11, name: "Alpha Requester", email: "alpha@example.com", department: "Finance" },
-];
-
 const CATEGORIES: api.ReferenceItem[] = [{ id: 7, name: "Hardware" }];
 const SYSTEMS: api.ReferenceItem[] = [{ id: 21, name: "Corporate Laptop" }];
 
 function mockShell() {
-  vi.spyOn(api, "fetchActiveRequesters").mockResolvedValue(REQUESTERS);
   vi.spyOn(api, "fetchCategories").mockResolvedValue(CATEGORIES);
   vi.spyOn(api, "fetchRelatedSystems").mockResolvedValue(SYSTEMS);
   vi.spyOn(api, "fetchMyTickets").mockResolvedValue({
@@ -37,15 +33,9 @@ function mockShell() {
 }
 
 async function openCreateTicket(user: ReturnType<typeof userEvent.setup>) {
-  render(<Lab2App />);
+  renderAsRequester(<Lab2App />);
 
-  await user.selectOptions(
-    await screen.findByLabelText(/development requester/i),
-    screen.getByRole("option", { name: /Alpha Requester/ }),
-  );
-  await user.click(screen.getByRole("button", { name: /continue/i }));
-
-  const nav = screen.getByRole("navigation", { name: /main/i });
+  const nav = await screen.findByRole("navigation", { name: /main/i });
   await user.click(within(nav).getByRole("button", { name: /create ticket/i }));
 
   return screen.findByRole("form", { name: /create ticket/i });

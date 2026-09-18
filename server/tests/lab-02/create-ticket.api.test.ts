@@ -1,7 +1,8 @@
-﻿import { describe, it, expect, beforeAll, afterEach, afterAll, vi } from "vitest";
+import { describe, it, expect, beforeAll, afterEach, afterAll, vi } from "vitest";
 import { app } from "../../src/app.js";
 import { getPrisma } from "../../src/prisma.js";
 import { loginAgent, type AuthedAgent } from "../authHelper.js";
+import { createTestUser, removeTestUsers } from "../lab-03/helpers.js";
 import {
   formatTicketNumber,
   nextSequence,
@@ -17,26 +18,24 @@ import {
 } from "../../src/ticketValidation.js";
 
 // Integration test: needs the database migrated and seeded first.
-//   npx prisma migrate dev
+//   npx prisma migrate deploy
 //   npm run prisma:seed
 const prisma = getPrisma();
 
 let requesterId: number;
-let otherRequesterId: number;
-let inactiveRequesterId: number | null = null;
 let categoryId: number;
 let relatedSystemId: number;
-// Lab 3 â€” POST /api/tickets is gated to the Requester role. Which seeded
-// account signs in is unrelated to `requesterId` above (the ticket's owner,
-// still supplied in the body exactly as in Lab 2).
+// Lab 3 BR-03 — the caller's own session id is the Ticket's owner. `agent`
+// signs in as the fixture Requester, so `requesterId` above always matches.
 let agent: AuthedAgent;
+let otherAgent: AuthedAgent;
+let staffAgent: AuthedAgent;
 
 /** Marks rows this suite creates so cleanup never touches other data. */
 const SUMMARY_TAG = "[api-test]";
 
 function validBody(overrides: Record<string, unknown> = {}) {
   return {
-    requesterId,
     categoryId,
     relatedSystemId,
     summary: `${SUMMARY_TAG} Laptop battery drains quickly`,
@@ -56,13 +55,10 @@ function uniqueBody(overrides: Record<string, unknown> = {}) {
 }
 
 beforeAll(async () => {
-  const [requesters, category, relatedSystem, inactive] = await Promise.all([
-    prisma.user.findMany({
-      where: { role: "Requester", isActive: true, deletedAt: null },
-      orderBy: { id: "asc" },
-      take: 2,
-      select: { id: true },
-    }),
+  const [requester, other, staff, category, relatedSystem] = await Promise.all([
+    createTestUser({ role: "Requester" }),
+    createTestUser({ role: "Requester" }),
+    createTestUser({ role: "ITStaff" }),
     prisma.category.findFirstOrThrow({
       where: { isActive: true },
       select: { id: true },
@@ -71,20 +67,15 @@ beforeAll(async () => {
       where: { isActive: true },
       select: { id: true },
     }),
-    prisma.user.findFirst({
-      where: { role: "Requester", isActive: false },
-      select: { id: true },
-    }),
   ]);
 
-  expect(requesters.length).toBeGreaterThanOrEqual(2);
-  requesterId = requesters[0].id;
-  otherRequesterId = requesters[1].id;
+  requesterId = requester.id;
   categoryId = category.id;
   relatedSystemId = relatedSystem.id;
-  inactiveRequesterId = inactive?.id ?? null;
 
-  agent = await loginAgent(app);
+  agent = await loginAgent(app, { email: requester.email, password: requester.password });
+  otherAgent = await loginAgent(app, { email: other.email, password: other.password });
+  staffAgent = await loginAgent(app, { email: staff.email, password: staff.password });
 });
 
 afterEach(async () => {
@@ -95,13 +86,14 @@ afterEach(async () => {
 });
 
 afterAll(async () => {
+  await removeTestUsers();
   await prisma.$disconnect();
 });
 
 // ---------------------------------------------------------------------------
-// UNIT-01 â€” Ticket Number generation
+// UNIT-01 — Ticket Number generation
 // ---------------------------------------------------------------------------
-describe("UNIT-01 â€” ticket number generation (BR-01, AC-05)", () => {
+describe("UNIT-01 — ticket number generation (BR-01, AC-05)", () => {
   it("formats numbers as TT-YYYYMMDD-NNNN", () => {
     expect(formatTicketNumber(new Date(2026, 8, 5), 1)).toBe(
       "TT-20260905-0001",
@@ -124,11 +116,10 @@ describe("UNIT-01 â€” ticket number generation (BR-01, AC-05)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// UNIT-02 / UNIT-03 â€” validation unit coverage
+// UNIT-02 / UNIT-03 — validation unit coverage
 // ---------------------------------------------------------------------------
-describe("UNIT-02 / UNIT-03 â€” summary and description validation (BR-11, BR-12, AC-07)", () => {
+describe("UNIT-02 / UNIT-03 — summary and description validation (BR-11, BR-12, AC-07)", () => {
   const base = {
-    requesterId: 1,
     categoryId: 1,
     relatedSystemId: 1,
     summary: "Valid summary",
@@ -211,9 +202,9 @@ describe("UNIT-02 / UNIT-03 â€” summary and description validation (BR-11, 
 });
 
 // ---------------------------------------------------------------------------
-// API-02 / API-03 â€” successful creation
+// API-02 / API-03 — successful creation
 // ---------------------------------------------------------------------------
-describe("API-02 / API-03 â€” valid ticket creation and backend defaults (AC-05, AC-06)", () => {
+describe("API-02 / API-03 — valid ticket creation and backend defaults (AC-05, AC-06)", () => {
   it("returns 201 and saves exactly one ticket (AC-05)", async () => {
     const before = await prisma.ticket.count();
     const res = await agent.post("/api/tickets").send(uniqueBody());
@@ -279,9 +270,12 @@ describe("API-02 / API-03 â€” valid ticket creation and backend defaults (A
     );
   });
 
-  it("associates the ticket with the selected requester (AC-05)", async () => {
-    const res = await agent.post("/api/tickets").send(uniqueBody());
+  it("associates the ticket with the authenticated requester, ignoring a spoofed requesterId (BR-03, AC-03)", async () => {
+    const res = await agent
+      .post("/api/tickets")
+      .send(uniqueBody({ requesterId: 999999 }));
 
+    expect(res.status).toBe(201);
     expect(res.body.data.requester.id).toBe(requesterId);
 
     const stored = await prisma.ticket.findUnique({
@@ -298,6 +292,19 @@ describe("API-02 / API-03 â€” valid ticket creation and backend defaults (A
     expect(res.body.data.relatedSystem.id).toBe(relatedSystemId);
     expect(res.body.data.category.name).toEqual(expect.any(String));
     expect(res.body.data.relatedSystem.name).toEqual(expect.any(String));
+  });
+
+  it("sets IT Priority to a copy of Requested Priority (BR-37)", async () => {
+    const res = await agent.post("/api/tickets").send(uniqueBody({ requestedPriority: "HIGH" }));
+
+    const stored = await prisma.ticket.findUniqueOrThrow({
+      where: { id: res.body.data.id },
+      select: { itPriority: true, requestedPriority: true, ticketOwnerId: true },
+    });
+    expect(stored.itPriority).toBe("HIGH");
+    expect(stored.requestedPriority).toBe("HIGH");
+    // BR-33 — new Tickets are unassigned.
+    expect(stored.ticketOwnerId).toBeNull();
   });
 
   it("persists trimmed text (FR-12)", async () => {
@@ -319,9 +326,9 @@ describe("API-02 / API-03 â€” valid ticket creation and backend defaults (A
 });
 
 // ---------------------------------------------------------------------------
-// API-04 â€” validation failures (AC-08)
+// API-04 — validation failures (AC-08)
 // ---------------------------------------------------------------------------
-describe("API-04 â€” invalid ticket request (AC-08)", () => {
+describe("API-04 — invalid ticket request (AC-08)", () => {
   async function expectRejected(
     body: Record<string, unknown>,
     field: string,
@@ -366,28 +373,11 @@ describe("API-04 â€” invalid ticket request (AC-08)", () => {
   it("rejects a missing priority", () =>
     expectRejected(uniqueBody({ requestedPriority: undefined }), "requestedPriority"));
 
-  it("rejects a missing requester", () =>
-    expectRejected(uniqueBody({ requesterId: undefined }), "requesterId"));
-
   it("rejects a nonexistent category (BR-17)", () =>
     expectRejected(uniqueBody({ categoryId: 999999 }), "categoryId"));
 
   it("rejects a nonexistent related system (BR-17)", () =>
     expectRejected(uniqueBody({ relatedSystemId: 999999 }), "relatedSystemId"));
-
-  it("rejects a nonexistent requester (BR-16)", () =>
-    expectRejected(uniqueBody({ requesterId: 999999 }), "requesterId"));
-
-  it("rejects an inactive requester (BR-16)", async () => {
-    if (inactiveRequesterId === null) {
-      // The seed provides one; skip rather than assert on missing fixture data.
-      return;
-    }
-    await expectRejected(
-      uniqueBody({ requesterId: inactiveRequesterId }),
-      "requesterId",
-    );
-  });
 
   it("rejects an empty body", async () => {
     const res = await agent.post("/api/tickets").send({});
@@ -406,18 +396,25 @@ describe("API-04 â€” invalid ticket request (AC-08)", () => {
         "summary",
         "description",
         "requestedPriority",
-        "requesterId",
         "categoryId",
         "relatedSystemId",
       ]),
     );
   });
+
+  it("rejects IT Staff and Administrators creating a ticket (AC-20)", async () => {
+    const before = await prisma.ticket.count();
+    const res = await staffAgent.post("/api/tickets").send(uniqueBody());
+
+    expect(res.status).toBe(403);
+    expect(await prisma.ticket.count()).toBe(before);
+  });
 });
 
 // ---------------------------------------------------------------------------
-// API-05 â€” duplicate submission (AC-09, BR-18)
+// API-05 — duplicate submission (AC-09, BR-18)
 // ---------------------------------------------------------------------------
-describe("API-05 â€” duplicate submission (AC-09)", () => {
+describe("API-05 — duplicate submission (AC-09)", () => {
   it("does not create a second ticket for a repeated identical submission", async () => {
     const body = uniqueBody();
 
@@ -447,15 +444,13 @@ describe("API-05 â€” duplicate submission (AC-09)", () => {
     expect(other.status).toBe(201);
   });
 
-  it("does not block an identical summary from a different requester", async () => {
+  it("does not block an identical summary from a different requester's session", async () => {
     const body = uniqueBody();
     await agent.post("/api/tickets").send(body);
 
-    const other = await agent
-      .post("/api/tickets")
-      .send({ ...body, requesterId: otherRequesterId });
+    const fromOther = await otherAgent.post("/api/tickets").send(body);
 
-    expect(other.status).toBe(201);
+    expect(fromOther.status).toBe(201);
   });
 
   it("creates exactly one ticket when two identical requests are sent together", async () => {
@@ -476,13 +471,13 @@ describe("API-05 â€” duplicate submission (AC-09)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// AC-23 / BR-39 â€” unexpected errors stay safe
+// AC-23 / BR-39 — unexpected errors stay safe
 // ---------------------------------------------------------------------------
-describe("API-02 â€” unexpected failure stays safe (AC-23)", () => {
+describe("API-02 — unexpected failure stays safe (AC-23)", () => {
   it("returns a safe 500 without leaking internals", async () => {
     // Silence the deliberate console.error this test provokes.
     vi.spyOn(console, "error").mockImplementation(() => {});
-    vi.spyOn(prisma.user, "findFirst").mockRejectedValue(
+    vi.spyOn(prisma.category, "findFirst").mockRejectedValue(
       new Error(
         'Invalid `prisma.ticket.create()` at C:\\repo\\server\\src\\tickets.ts:120',
       ),

@@ -1,41 +1,23 @@
 export const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 
-/** A Lab 2 testing identity (BR-04). Not a real authenticated user. */
-export interface DevelopmentRequester {
-  id: number;
-  name: string;
-  email: string;
-  department?: string | null;
-}
+// ---------------------------------------------------------------------------
+// Session-expiry notification
+// ---------------------------------------------------------------------------
 
 /**
- * FR-32 — load the active Development Requesters for the selector.
- *
- * Throws on any failure so the caller renders a single safe error state
- * (BR-39: no server internals reach the user).
+ * Lab 3 ui-spec.md §2.3 — any API 401 means the session has ended (expired or
+ * revoked). AuthContext registers a handler here so every screen's own fetch
+ * call can trigger the shared "session has ended" redirect, not just the
+ * initial `/api/auth/me` check.
  */
-export async function fetchActiveRequesters(): Promise<DevelopmentRequester[]> {
-  let res: Response;
-  try {
-    res = await fetch(`${API_URL}/api/development-requesters`, {
-      credentials: "include",
-    });
-  } catch {
-    // Network/DNS/CORS failure — the API was never reached.
-    throw new Error("Could not reach the server. Please try again.");
-  }
+let sessionExpiredHandler: (() => void) | null = null;
 
-  if (!res.ok) {
-    throw new Error("Could not load development requesters.");
-  }
+export function setSessionExpiredHandler(handler: (() => void) | null): void {
+  sessionExpiredHandler = handler;
+}
 
-  const body = (await res.json()) as { data?: DevelopmentRequester[] };
-
-  if (!Array.isArray(body.data)) {
-    throw new Error("Could not load development requesters.");
-  }
-
-  return body.data;
+function notifyIfSessionExpired(status: number): void {
+  if (status === 401) sessionExpiredHandler?.();
 }
 
 // ---------------------------------------------------------------------------
@@ -51,7 +33,6 @@ export const REQUESTED_PRIORITIES = ["LOW", "MEDIUM", "HIGH", "URGENT"] as const
 export type RequestedPriority = (typeof REQUESTED_PRIORITIES)[number];
 
 export interface CreateTicketRequest {
-  requesterId: number;
   categoryId: number;
   relatedSystemId: number;
   summary: string;
@@ -124,7 +105,10 @@ async function fetchReference(
     throw new Error("Could not reach the server. Please try again.");
   }
 
-  if (!res.ok) throw new Error(failureMessage);
+  if (!res.ok) {
+    notifyIfSessionExpired(res.status);
+    throw new Error(failureMessage);
+  }
 
   const list = readReferenceList(await res.json());
   if (!list) throw new Error(failureMessage);
@@ -157,16 +141,22 @@ export type SortOrder = "asc" | "desc";
 /** BR-25 — supported page sizes. */
 export const PAGE_SIZES = [10, 20, 50] as const;
 
-/** Matches the TicketStatus enum on the server. */
+/** Matches the TicketStatus enum on the server (Lab 3 §7.1). */
 export const TICKET_STATUSES = [
   "New",
+  "Open",
   "InProgress",
-  "OnHold",
+  "WaitingForRequester",
   "Resolved",
   "Closed",
+  "Reopened",
   "Cancelled",
 ] as const;
 export type TicketStatus = (typeof TICKET_STATUSES)[number];
+
+export interface TicketOwnerSummary {
+  name: string;
+}
 
 export interface TicketListRow {
   id: number;
@@ -176,6 +166,10 @@ export interface TicketListRow {
   category: string;
   requestedPriority: RequestedPriority;
   currentStatus: string;
+  /** New in Lab 3 — the Ticket Owner's name, or null when unassigned. */
+  ticketOwner: TicketOwnerSummary | null;
+  /** New in Lab 3 — set when the Requester reported the problem appears resolved. */
+  problemAppearsResolvedAt: string | null;
   updatedAt: string;
 }
 
@@ -203,11 +197,10 @@ export interface TicketListResponse {
 }
 
 /**
- * BR-08 — the Requester id scopes the list; a Requester only ever sees their
- * own Tickets. Throws ApiError so the caller can show a safe failure state.
+ * BR-03 / BR-08 — the authenticated Requester's session determines ownership.
+ * Throws ApiError so the caller can show a safe failure state.
  */
 export async function fetchMyTickets(
-  requesterId: number,
   params: TicketListParams = {},
 ): Promise<TicketListResponse> {
   const query = new URLSearchParams();
@@ -222,10 +215,9 @@ export async function fetchMyTickets(
 
   let res: Response;
   try {
-    res = await fetch(
-      `${API_URL}/api/requesters/${requesterId}/tickets${suffix}`,
-      { credentials: "include" },
-    );
+    res = await fetch(`${API_URL}/api/tickets/mine${suffix}`, {
+      credentials: "include",
+    });
   } catch {
     throw new ApiError("Could not reach the server. Please try again.", {
       status: 0,
@@ -241,6 +233,7 @@ export async function fetchMyTickets(
   }
 
   if (!res.ok) {
+    notifyIfSessionExpired(res.status);
     const error = (body as { error?: Record<string, unknown> } | null)?.error;
     throw new ApiError(
       typeof error?.message === "string"
@@ -279,6 +272,12 @@ export interface AttachmentMetadata {
   removalReason: string | null;
 }
 
+export interface TicketDetailPermissions {
+  canManageAttachments: boolean;
+  canAddPublicComment: boolean;
+  canReportProblemResolved: boolean;
+}
+
 export interface TicketDetail {
   id: number;
   ticketNumber: string;
@@ -290,9 +289,12 @@ export interface TicketDetail {
   description: string;
   requestedPriority: RequestedPriority;
   currentStatus: string;
+  ticketOwner: TicketOwnerSummary | null;
+  problemAppearsResolvedAt: string | null;
   createdAt: string;
   updatedAt: string;
   attachments: AttachmentMetadata[];
+  permissions: TicketDetailPermissions;
 }
 
 /** Reads a JSON body, tolerating a non-JSON error page. */
@@ -319,20 +321,16 @@ function toApiError(res: Response, body: unknown, fallback: string): ApiError {
   );
 }
 
-const ticketUrl = (requesterId: number, ticketId: number) =>
-  `${API_URL}/api/requesters/${requesterId}/tickets/${ticketId}`;
+const ticketUrl = (ticketId: number) => `${API_URL}/api/tickets/${ticketId}`;
 
 /**
- * BR-09 — the server refuses a Ticket owned by someone else. The thrown
- * ApiError carries the status so the UI can show an ownership message.
+ * BR-09 — a Ticket owned by someone else, and one that does not exist, both
+ * answer 404. The thrown ApiError carries the status either way.
  */
-export async function fetchTicketDetail(
-  requesterId: number,
-  ticketId: number,
-): Promise<TicketDetail> {
+export async function fetchTicketDetail(ticketId: number): Promise<TicketDetail> {
   let res: Response;
   try {
-    res = await fetch(ticketUrl(requesterId, ticketId), { credentials: "include" });
+    res = await fetch(ticketUrl(ticketId), { credentials: "include" });
   } catch {
     throw new ApiError("Could not reach the server. Please try again.", {
       status: 0,
@@ -342,6 +340,7 @@ export async function fetchTicketDetail(
 
   const body = await readJson(res);
   if (!res.ok) {
+    notifyIfSessionExpired(res.status);
     throw toApiError(res, body, "Could not load the ticket. Please try again.");
   }
 
@@ -357,7 +356,6 @@ export async function fetchTicketDetail(
 
 /** BR-10 — upload is scoped to a Ticket the Requester owns. */
 export async function uploadAttachment(
-  requesterId: number,
   ticketId: number,
   file: File,
 ): Promise<AttachmentMetadata> {
@@ -366,7 +364,7 @@ export async function uploadAttachment(
 
   let res: Response;
   try {
-    res = await fetch(`${ticketUrl(requesterId, ticketId)}/attachments`, {
+    res = await fetch(`${ticketUrl(ticketId)}/attachments`, {
       method: "POST",
       body: form,
       credentials: "include",
@@ -380,6 +378,7 @@ export async function uploadAttachment(
 
   const body = await readJson(res);
   if (!res.ok) {
+    notifyIfSessionExpired(res.status);
     throw toApiError(
       res,
       body,
@@ -398,13 +397,10 @@ export async function uploadAttachment(
 }
 
 /** BR-38 — includes removed attachments, which stay visible as metadata. */
-export async function fetchAttachments(
-  requesterId: number,
-  ticketId: number,
-): Promise<AttachmentMetadata[]> {
+export async function fetchAttachments(ticketId: number): Promise<AttachmentMetadata[]> {
   let res: Response;
   try {
-    res = await fetch(`${ticketUrl(requesterId, ticketId)}/attachments`, {
+    res = await fetch(`${ticketUrl(ticketId)}/attachments`, {
       credentials: "include",
     });
   } catch {
@@ -416,6 +412,7 @@ export async function fetchAttachments(
 
   const body = await readJson(res);
   if (!res.ok) {
+    notifyIfSessionExpired(res.status);
     throw toApiError(res, body, "Could not load attachments.");
   }
 
@@ -433,32 +430,24 @@ export async function fetchAttachments(
  * The download URL for an active attachment. Removed attachments must never
  * be linked (BR-37); the server answers 410 if one is requested anyway.
  */
-export function attachmentDownloadUrl(
-  requesterId: number,
-  ticketId: number,
-  attachmentId: number,
-): string {
-  return `${ticketUrl(requesterId, ticketId)}/attachments/${attachmentId}`;
+export function attachmentDownloadUrl(ticketId: number, attachmentId: number): string {
+  return `${ticketUrl(ticketId)}/attachments/${attachmentId}`;
 }
 
 /** BR-35 — soft removal requires an explicit, non-empty reason. */
 export async function removeAttachment(
-  requesterId: number,
   ticketId: number,
   attachmentId: number,
   removalReason: string,
 ): Promise<{ id: number; removedAt: string; removalReason: string }> {
   let res: Response;
   try {
-    res = await fetch(
-      `${ticketUrl(requesterId, ticketId)}/attachments/${attachmentId}`,
-      {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ removalReason }),
-        credentials: "include",
-      },
-    );
+    res = await fetch(`${ticketUrl(ticketId)}/attachments/${attachmentId}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ removalReason }),
+      credentials: "include",
+    });
   } catch {
     throw new ApiError("Could not reach the server. Please try again.", {
       status: 0,
@@ -468,6 +457,7 @@ export async function removeAttachment(
 
   const body = await readJson(res);
   if (!res.ok) {
+    notifyIfSessionExpired(res.status);
     throw toApiError(
       res,
       body,
@@ -527,6 +517,7 @@ export async function createTicket(
     return data;
   }
 
+  notifyIfSessionExpired(res.status);
   const error = (body as { error?: Record<string, unknown> } | null)?.error;
   const message =
     typeof error?.message === "string"
@@ -541,4 +532,110 @@ export async function createTicket(
         ? (error.fieldErrors as Record<string, string>)
         : {},
   });
+}
+
+// ---------------------------------------------------------------------------
+// Public Comments and "Problem Appears Resolved" (Lab 3)
+// ---------------------------------------------------------------------------
+
+export interface ThreadAuthor {
+  id: number;
+  name: string;
+  role: string;
+}
+
+export interface ThreadEntry {
+  id: number;
+  body: string;
+  author: ThreadAuthor;
+  createdAt: string;
+}
+
+async function threadRequest<T>(
+  path: string,
+  init: RequestInit,
+  failureMessage: string,
+): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      ...init,
+      credentials: "include",
+      headers: init.body
+        ? { "Content-Type": "application/json", ...init.headers }
+        : init.headers,
+    });
+  } catch {
+    throw new ApiError("Could not reach the server. Please try again.", {
+      status: 0,
+      code: "NETWORK_ERROR",
+    });
+  }
+
+  const body = await readJson(res);
+  if (!res.ok) {
+    notifyIfSessionExpired(res.status);
+    throw toApiError(res, body, failureMessage);
+  }
+  return body as T;
+}
+
+/** api-spec.md §10.1 — Public Comments, oldest first. */
+export async function fetchPublicComments(ticketId: number): Promise<ThreadEntry[]> {
+  const body = await threadRequest<{ data?: ThreadEntry[] }>(
+    `/api/tickets/${ticketId}/public-comments`,
+    { method: "GET" },
+    "Could not load comments. Please try again.",
+  );
+  if (!Array.isArray(body.data)) {
+    throw new ApiError("The comment list response was not understood.", {
+      status: 0,
+      code: "BAD_RESPONSE",
+    });
+  }
+  return body.data;
+}
+
+/** api-spec.md §10.2 — posts one Public Comment as the caller. */
+export async function postPublicComment(
+  ticketId: number,
+  body: string,
+): Promise<ThreadEntry> {
+  const result = await threadRequest<{ data?: ThreadEntry }>(
+    `/api/tickets/${ticketId}/public-comments`,
+    { method: "POST", body: JSON.stringify({ body }) },
+    "Could not post the comment. Please try again.",
+  );
+  if (!result.data?.id) {
+    throw new ApiError("The comment response was not understood.", {
+      status: 0,
+      code: "BAD_RESPONSE",
+    });
+  }
+  return result.data;
+}
+
+export interface ProblemResolvedResult {
+  problemAppearsResolvedAt: string;
+  currentStatus: string;
+  publicComment: ThreadEntry;
+}
+
+/** api-spec.md §12.1 — reports "Problem Appears Resolved"; never changes status. */
+export async function reportProblemResolved(
+  ticketId: number,
+  note: string,
+): Promise<ProblemResolvedResult> {
+  const result = await threadRequest<{ data?: ProblemResolvedResult }>(
+    `/api/tickets/${ticketId}/problem-resolved`,
+    { method: "POST", body: JSON.stringify({ note }) },
+    "Could not send the report. Please try again.",
+  );
+  if (!result.data?.problemAppearsResolvedAt) {
+    throw new ApiError("The report response was not understood.", {
+      status: 0,
+      code: "BAD_RESPONSE",
+    });
+  }
+  return result.data;
 }

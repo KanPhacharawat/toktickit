@@ -80,63 +80,65 @@ function toAttachmentMetadata(attachment: AttachmentRecord) {
 }
 
 type OwnershipFailure = { ok: false };
-type OwnershipSuccess = { ok: true; ticketId: number };
+export type OwnershipSuccess = {
+  ok: true;
+  ticketId: number;
+  currentStatus: string;
+  updatedAt: Date;
+};
+
+/** Terminal statuses (BR-41): once here, most Ticket operations return 409. */
+export const TERMINAL_STATUSES = new Set(["Closed", "Cancelled"]);
 
 /**
- * BR-10 — every attachment operation requires the parent Ticket to belong to
- * the selected Requester. Resolves ownership once and answers 404/403 itself.
+ * BR-03 / BR-08 — every Requester-facing Ticket operation requires the
+ * Ticket's `requesterId` to equal the authenticated caller's id. Resolves
+ * ownership once and answers 400/404 itself.
  *
- * BR-09 — a Ticket owned by someone else returns 403 with nothing about the
- * real owner.
+ * BR-09 — a Ticket that does not exist, and one owned by someone else, return
+ * the identical 404, so no id ever reveals whether it belongs to another
+ * Requester.
  */
-async function requireOwnedTicket(
+export async function requireOwnedTicket(
   req: Request,
   res: Response,
 ): Promise<OwnershipFailure | OwnershipSuccess> {
-  const requesterId = parseId(req.params.requesterId);
   const ticketId = parseId(req.params.ticketId);
 
-  if (requesterId === null || ticketId === null) {
+  if (ticketId === null) {
     fail(res, 400, "VALIDATION_ERROR", "The request contains invalid data.", {
-      fieldErrors: {
-        ...(requesterId === null
-          ? { requesterId: "A valid requester is required." }
-          : {}),
-        ...(ticketId === null ? { ticketId: "A valid ticket is required." } : {}),
-      },
+      fieldErrors: { ticketId: "A valid ticket is required." },
     });
     return { ok: false };
   }
 
   const ticket = await getPrisma().ticket.findFirst({
     where: { id: ticketId, deletedAt: null },
-    select: { id: true, requesterId: true },
+    select: { id: true, requesterId: true, currentStatus: true, updatedAt: true },
   });
 
-  if (!ticket) {
+  if (!ticket || ticket.requesterId !== req.auth!.user.id) {
     fail(res, 404, "NOT_FOUND", "Ticket not found.");
     return { ok: false };
   }
 
-  if (ticket.requesterId !== requesterId) {
-    fail(res, 403, "FORBIDDEN", "You do not have access to this ticket.");
-    return { ok: false };
-  }
-
-  return { ok: true, ticketId: ticket.id };
+  return {
+    ok: true,
+    ticketId: ticket.id,
+    currentStatus: ticket.currentStatus,
+    updatedAt: ticket.updatedAt,
+  };
 }
 
 // ---------------------------------------------------------------------------
-// GET /api/requesters/:requesterId/tickets/:ticketId — Ticket Detail (§8)
+// GET /api/tickets/:ticketId — Ticket Detail (api-spec.md §8.1).
 //
-// Lab 3 — Requester role only. `requireOwnedTicket` still checks the
-// `:requesterId` path parameter, unchanged from Lab 2, so this stays scoped
-// to Requester until the Requester regression issue rewires ownership to the
-// authenticated identity and IT Staff Ticket operations adds the staff-facing
-// route (matrix §5.1 "Ticket Detail": Own for Requester, All for staff).
+// Lab 3 — Requester role only for now; the Requester's own Ticket detail is
+// shaped as RequesterTicketDetail (§3.5). IT Staff and Administrators get a
+// different, richer shape once the IT Staff Ticket Operations issue adds it.
 // ---------------------------------------------------------------------------
 attachmentsRouter.get(
-  "/api/requesters/:requesterId/tickets/:ticketId",
+  "/api/tickets/:ticketId",
   ...protect("Requester"),
   async (req: Request, res: Response) => {
     try {
@@ -147,12 +149,22 @@ attachmentsRouter.get(
         where: { id: owned.ticketId },
         include: {
           requester: { select: { id: true, name: true, email: true } },
+          ticketOwner: { select: { name: true } },
           category: { select: { id: true, name: true } },
           relatedSystem: { select: { id: true, name: true } },
           // BR-38 — removed attachments stay visible as metadata.
           attachments: { orderBy: { id: "asc" } },
         },
       });
+
+      const isTerminal = TERMINAL_STATUSES.has(ticket.currentStatus);
+      // BR-48 — eligible statuses for the resolution signal.
+      const canReportProblemResolved =
+        !isTerminal &&
+        ticket.problemAppearsResolvedAt === null &&
+        ["New", "Open", "InProgress", "WaitingForRequester", "Reopened"].includes(
+          ticket.currentStatus,
+        );
 
       return res.status(200).json({
         data: {
@@ -166,9 +178,16 @@ attachmentsRouter.get(
           requestedPriority: ticket.requestedPriority,
           currentStatus: ticket.currentStatus,
           description: ticket.description,
+          ticketOwner: ticket.ticketOwner ? { name: ticket.ticketOwner.name } : null,
+          problemAppearsResolvedAt: ticket.problemAppearsResolvedAt,
           createdAt: ticket.createdAt,
           updatedAt: ticket.updatedAt,
           attachments: ticket.attachments.map(toAttachmentMetadata),
+          permissions: {
+            canManageAttachments: !isTerminal,
+            canAddPublicComment: !isTerminal,
+            canReportProblemResolved,
+          },
         },
       });
     } catch (err) {
@@ -182,7 +201,7 @@ attachmentsRouter.get(
 // GET .../attachments — Attachment metadata (§10). Lab 3 — Requester role only.
 // ---------------------------------------------------------------------------
 attachmentsRouter.get(
-  "/api/requesters/:requesterId/tickets/:ticketId/attachments",
+  "/api/tickets/:ticketId/attachments",
   ...protect("Requester"),
   async (req: Request, res: Response) => {
     try {
@@ -210,7 +229,7 @@ attachmentsRouter.get(
 // No for IT Staff/Administrator).
 // ---------------------------------------------------------------------------
 attachmentsRouter.post(
-  "/api/requesters/:requesterId/tickets/:ticketId/attachments",
+  "/api/tickets/:ticketId/attachments",
   ...protect("Requester"),
   (req: Request, res: Response) => {
     upload.single("file")(req, res, async (uploadErr: unknown) => {
@@ -326,7 +345,7 @@ attachmentsRouter.post(
 // Lab 3 — Requester role only.
 // ---------------------------------------------------------------------------
 attachmentsRouter.get(
-  "/api/requesters/:requesterId/tickets/:ticketId/attachments/:attachmentId",
+  "/api/tickets/:ticketId/attachments/:attachmentId",
   ...protect("Requester"),
   async (req: Request, res: Response) => {
     try {
@@ -401,7 +420,7 @@ attachmentsRouter.get(
 // Requester role only.
 // ---------------------------------------------------------------------------
 attachmentsRouter.delete(
-  "/api/requesters/:requesterId/tickets/:ticketId/attachments/:attachmentId",
+  "/api/tickets/:ticketId/attachments/:attachmentId",
   ...protect("Requester"),
   async (req: Request, res: Response) => {
     try {

@@ -10,7 +10,7 @@ import {
   type ReferenceItem,
   type RequestedPriority,
 } from "./api.js";
-import { useRequester } from "./RequesterContext.js";
+import { useAuth } from "./AuthContext.js";
 import {
   EMPTY_TICKET_FORM,
   priorityLabel,
@@ -56,7 +56,7 @@ interface CreateTicketProps {
 }
 
 export default function CreateTicket({ onDone }: CreateTicketProps) {
-  const { selectedRequester } = useRequester();
+  const { user } = useAuth();
 
   const [values, setValues] = useState<TicketFormValues>(EMPTY_TICKET_FORM);
   const [fieldErrors, setFieldErrors] = useState<TicketFieldErrors>({});
@@ -103,7 +103,7 @@ export default function CreateTicket({ onDone }: CreateTicketProps) {
     };
   }, [referenceReloadToken]);
 
-  if (!selectedRequester) return null;
+  if (!user) return null;
 
   function updateField(field: keyof TicketFormValues, value: string) {
     setValues((current) => ({ ...current, [field]: value }));
@@ -156,7 +156,6 @@ export default function CreateTicket({ onDone }: CreateTicketProps) {
 
     try {
       const ticket = await createTicket({
-        requesterId: selectedRequester!.id,
         categoryId: Number(values.categoryId),
         relatedSystemId: Number(values.relatedSystemId),
         summary: values.summary.trim(),
@@ -172,11 +171,7 @@ export default function CreateTicket({ onDone }: CreateTicketProps) {
         const failed: string[] = [];
         for (const candidate of attachments) {
           try {
-            await uploadAttachment(
-              selectedRequester!.id,
-              ticket.id,
-              candidate.file,
-            );
+            await uploadAttachment(ticket.id, candidate.file);
           } catch {
             failed.push(candidate.name);
           }
@@ -339,7 +334,7 @@ export default function CreateTicket({ onDone }: CreateTicketProps) {
             <input
               id="ticket-requester"
               className="form-control zen-readonly-field"
-              value={selectedRequester.name}
+              value={user.name}
               readOnly
               tabIndex={-1}
             />

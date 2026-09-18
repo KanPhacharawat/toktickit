@@ -3,6 +3,7 @@ import cors from "cors";
 import { getPrisma } from "./prisma.js";
 import { ticketsRouter } from "./tickets.js";
 import { attachmentsRouter } from "./attachments.js";
+import { commentsRouter } from "./comments.js";
 import { authRouter } from "./auth/routes.js";
 import { bcryptCost } from "./auth/credentials.js";
 import { protect } from "./auth/middleware.js";
@@ -95,46 +96,21 @@ app.get("/api/categories", ...protect(), async (_req: Request, res: Response) =>
 });
 
 // ---------------------------------------------------------------------------
-// Lab 2 — Development Requester selection
-// GET /api/development-requesters
-//   -> FR-32/BR-05: active Development Requesters only.
-//   -> The selected Requester is the Lab 2 testing identity (BR-04). It is
-//      NOT authentication; Lab 3 replaces it with a real signed-in user.
-//
-// Lab 3 — this residual Lab 2 mechanism is Requester-facing only; it is
-// removed entirely by the Requester regression issue (FR-19). Until then it
-// is gated to the Requester role so it cannot be used to enumerate accounts
-// from another role.
+// Lab 3 FR-19 / AC-19 — the Development Requester selector and its API are
+// fully removed. GET /api/development-requesters now falls through to the
+// unmatched-route 404 below, exactly like any other unknown /api route.
 // ---------------------------------------------------------------------------
-app.get(
-  "/api/development-requesters",
-  ...protect("Requester"),
-  async (_req: Request, res: Response) => {
-    try {
-      const requesters = await getPrisma().user.findMany({
-        // Inactive and soft-removed Requesters never reach the selector (AC-03).
-        // Lab 3: Development Requesters now live in `User`; only the Requester
-        // role belongs in this Lab 2 selector until it is removed.
-        where: { role: "Requester", isActive: true, deletedAt: null },
-        select: { id: true, name: true, email: true, department: true },
-        orderBy: { id: "asc" },
-      });
-      res.status(200).json({ data: requesters });
-    } catch (err) {
-      console.error("GET /api/development-requesters failed:", err);
-      // BR-39 — safe message only, no internal details.
-      res.status(500).json({
-        error: {
-          code: "INTERNAL_ERROR",
-          message: "Failed to load development requesters.",
-        },
-      });
-    }
-  },
-);
 
-// Lab 2 — Create Ticket and its reference data.
 app.use(ticketsRouter);
 app.use(attachmentsRouter);
+app.use(commentsRouter);
+
+// api-spec.md §1.1 — any unmatched /api route, including a removed Lab 2
+// one, answers the documented envelope instead of Express's default HTML.
+app.use("/api", (_req: Request, res: Response) => {
+  res.status(404).json({
+    error: { code: "NOT_FOUND", message: "Resource not found." },
+  });
+});
 
 export default app;

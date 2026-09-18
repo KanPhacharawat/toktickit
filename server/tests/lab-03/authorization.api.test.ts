@@ -30,15 +30,16 @@ const PROTECTED_ROUTES: Array<{
 }> = [
   { name: "categories", method: "get", path: "/api/categories", role: "any" },
   { name: "related systems", method: "get", path: "/api/related-systems", role: "any" },
-  { name: "development requesters", method: "get", path: "/api/development-requesters", role: "Requester" },
   { name: "create ticket", method: "post", path: "/api/tickets", role: "Requester" },
-  { name: "my tickets (path)", method: "get", path: "/api/requesters/1/tickets", role: "Requester" },
-  { name: "my tickets (query)", method: "get", path: "/api/tickets?requesterId=1", role: "Requester" },
-  { name: "ticket detail", method: "get", path: "/api/requesters/1/tickets/1", role: "Requester" },
-  { name: "attachment list", method: "get", path: "/api/requesters/1/tickets/1/attachments", role: "Requester" },
-  { name: "attachment upload", method: "post", path: "/api/requesters/1/tickets/1/attachments", role: "Requester" },
-  { name: "attachment download", method: "get", path: "/api/requesters/1/tickets/1/attachments/1", role: "Requester" },
-  { name: "attachment removal", method: "delete", path: "/api/requesters/1/tickets/1/attachments/1", role: "Requester" },
+  { name: "my tickets", method: "get", path: "/api/tickets/mine", role: "Requester" },
+  { name: "ticket detail", method: "get", path: "/api/tickets/1", role: "Requester" },
+  { name: "attachment list", method: "get", path: "/api/tickets/1/attachments", role: "Requester" },
+  { name: "attachment upload", method: "post", path: "/api/tickets/1/attachments", role: "Requester" },
+  { name: "attachment download", method: "get", path: "/api/tickets/1/attachments/1", role: "Requester" },
+  { name: "attachment removal", method: "delete", path: "/api/tickets/1/attachments/1", role: "Requester" },
+  { name: "public comments list", method: "get", path: "/api/tickets/1/public-comments", role: "Requester" },
+  { name: "public comments post", method: "post", path: "/api/tickets/1/public-comments", role: "Requester" },
+  { name: "problem resolved", method: "post", path: "/api/tickets/1/problem-resolved", role: "Requester" },
 ];
 
 /** Structural interface both `request(app)` and an authenticated agent satisfy. */
@@ -160,7 +161,7 @@ describe("SEC-07 — role-restricted routes (AC-17, AC-20, AC-45, BR-05, BR-07, 
     const user = await createTestUser({ role: "Requester" });
     const agent = await loginAgent(app, { email: user.email, password: user.password });
 
-    const res = await agent.get("/api/development-requesters");
+    const res = await agent.get("/api/tickets/mine");
     expect(res.status).toBe(200);
   });
 
@@ -178,7 +179,7 @@ describe("SEC-07 — role-restricted routes (AC-17, AC-20, AC-45, BR-05, BR-07, 
 
 // ---------------------------------------------------------------------------
 describe("SEC-09 — check-order leaks (BR-08)", () => {
-  const malformedPath = "/api/requesters/abc/tickets/xyz";
+  const malformedPath = "/api/tickets/abc";
 
   it("unauthenticated + invalid id → 401, not 400", async () => {
     const res = await request(app).get(malformedPath);
@@ -218,7 +219,7 @@ describe("SEC-12 — role read per request (BR-22)", () => {
     const user = await createTestUser({ role: "ITStaff" });
     const agent = await loginAgent(app, { email: user.email, password: user.password });
 
-    expect((await agent.get("/api/development-requesters")).status).toBe(403);
+    expect((await agent.get("/api/tickets/mine")).status).toBe(403);
 
     // No admin endpoint exists yet to do this through the API (that arrives
     // with the Administrator user management issue); the mechanism under
@@ -226,7 +227,27 @@ describe("SEC-12 — role read per request (BR-22)", () => {
     // either way.
     await prisma.user.update({ where: { id: user.id }, data: { role: "Requester" } });
 
-    expect((await agent.get("/api/development-requesters")).status).toBe(200);
+    expect((await agent.get("/api/tickets/mine")).status).toBe(200);
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe("SEC-11 — removed Lab 2 routes (AC-19, FR-19)", () => {
+  it("returns 404 for the removed Development Requester selector route", async () => {
+    const user = await createTestUser({ role: "Requester" });
+    const agent = await loginAgent(app, { email: user.email, password: user.password });
+
+    expect((await agent.get("/api/development-requesters")).status).toBe(404);
+    expect((await request(app).get("/api/development-requesters")).status).toBe(404);
+  });
+
+  it("returns 404 for the removed requesterId-scoped routes", async () => {
+    const user = await createTestUser({ role: "Requester" });
+    const agent = await loginAgent(app, { email: user.email, password: user.password });
+
+    expect((await agent.get("/api/requesters/1/tickets")).status).toBe(404);
+    expect((await agent.get("/api/requesters/1/tickets/1")).status).toBe(404);
+    expect((await agent.get("/api/tickets?requesterId=1")).status).toBe(404);
   });
 });
 

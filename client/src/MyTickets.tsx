@@ -13,7 +13,7 @@ import {
   type TicketListMeta,
   type TicketListRow,
 } from "./api.js";
-import { useRequester } from "./RequesterContext.js";
+import { useAuth } from "./AuthContext.js";
 import { priorityLabel } from "./ticketFormRules.js";
 
 /** The filter/search/sort/page state that drives one request. */
@@ -69,7 +69,7 @@ export default function MyTickets({
   /** Opens Ticket Detail for one owned ticket. */
   onOpenTicket?: (ticketId: number) => void;
 }) {
-  const { selectedRequester } = useRequester();
+  const { user } = useAuth();
 
   const [controls, setControls] = useState<ListControls>(DEFAULT_CONTROLS);
   // The search box is separate from `controls.search`: it only takes effect
@@ -90,8 +90,6 @@ export default function MyTickets({
 
   const [categories, setCategories] = useState<ReferenceItem[]>([]);
 
-  const requesterId = selectedRequester?.id ?? null;
-
   // Categories drive the Category filter (FR-30). A failure here only costs
   // the filter, so it does not fail the whole screen.
   useEffect(() => {
@@ -104,16 +102,13 @@ export default function MyTickets({
     };
   }, []);
 
-  // BR-07 / AC-04 — requesterId is a dependency, so switching Requester
-  // reloads the list for the new owner.
   useEffect(() => {
-    if (requesterId === null) return;
     let cancelled = false;
 
     setLoadState("loading");
     setErrorMessage("");
 
-    fetchMyTickets(requesterId, {
+    fetchMyTickets({
       search: controls.search,
       categoryId: controls.categoryId,
       requestedPriority: controls.requestedPriority,
@@ -144,7 +139,7 @@ export default function MyTickets({
     return () => {
       cancelled = true;
     };
-  }, [requesterId, controls, reloadToken]);
+  }, [controls, reloadToken]);
 
   /** Any control change other than paging returns to page 1 (BR-25). */
   const updateControls = useCallback(
@@ -163,7 +158,7 @@ export default function MyTickets({
     setControls(DEFAULT_CONTROLS);
   }
 
-  if (!selectedRequester) return null;
+  if (!user) return null;
 
   const filtersActive = hasActiveFilters(controls);
   // Counts only the dropdown filters: the search box stays visible, so it
@@ -458,9 +453,7 @@ export default function MyTickets({
         <>
           <div className="zen-card table-responsive">
             <table className="table zen-table mb-0">
-              <caption className="visually-hidden">
-                Tickets belonging to {selectedRequester.name}
-              </caption>
+              <caption className="visually-hidden">Your tickets</caption>
               <thead>
                 <tr>
                   <th scope="col">Ticket Number</th>
@@ -468,6 +461,7 @@ export default function MyTickets({
                   <th scope="col">Category</th>
                   <th scope="col">Requested Priority</th>
                   <th scope="col">Current Status</th>
+                  <th scope="col">Assigned To</th>
                   <th scope="col">Last Updated</th>
                 </tr>
               </thead>
@@ -501,7 +495,16 @@ export default function MyTickets({
                       <span className="zen-badge zen-status">
                         {statusLabel(row.currentStatus)}
                       </span>
+                      {row.problemAppearsResolvedAt && (
+                        <>
+                          {" "}
+                          <span className="zen-badge zen-status">
+                            Problem appears resolved
+                          </span>
+                        </>
+                      )}
                     </td>
+                    <td>{row.ticketOwner ? row.ticketOwner.name : "Unassigned"}</td>
                     <td className="text-nowrap">
                       {new Date(row.updatedAt).toLocaleString()}
                     </td>

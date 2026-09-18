@@ -1,17 +1,16 @@
-import { useContext, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useOptionalAuth } from "./AuthContext.js";
 import ProfileMenu from "./ProfileMenu.js";
-import { RequesterContext } from "./RequesterContext.js";
 
-/** The requester-facing screens reachable from the shell nav. */
+/** The Requester-facing screens reachable from the shell nav. */
 export type AppView = "tickets" | "create";
 
 /**
- * Application shell — ui-spec.md §2.
+ * Application shell — Lab 3 ui-spec.md §3.
  *
- * Displays the selected Development Requester, the Change Requester action,
- * and navigation with active-view indication. The identity is labelled as a
- * testing identity, never as a signed-in user.
+ * Shows the authenticated user's name, role badge, and profile menu. The
+ * Lab 2 "Testing as" chip and Change Requester action are gone entirely
+ * (FR-19) — identity comes only from the session.
  */
 export default function AppShell({
   children,
@@ -22,13 +21,10 @@ export default function AppShell({
   view?: AppView;
   onNavigate?: (view: AppView) => void;
 }) {
-  // Both contexts are optional: the voluntary Change Password screen renders
-  // the shell outside the Lab 2 requester screens, and Lab 2 component tests
-  // render the requester screens without authentication.
-  const requester = useContext(RequesterContext);
-  const selectedRequester = requester?.selectedRequester ?? null;
+  // Optional: the voluntary Change Password screen renders the shell outside
+  // the Requester screens, and some component tests render without auth.
   const auth = useOptionalAuth();
-  const showNav = Boolean(selectedRequester && onNavigate);
+  const showNav = Boolean(auth?.user && onNavigate);
 
   return (
     <div className="min-vh-100">
@@ -61,25 +57,6 @@ export default function AppShell({
           )}
 
           <div className="d-flex flex-wrap align-items-center gap-3 ms-auto">
-            {selectedRequester && requester && (
-              <div className="d-flex flex-wrap align-items-center gap-2">
-                <span className="small text-white-50">Testing as</span>
-                <span
-                  className="zen-requester-chip"
-                  data-testid="current-requester"
-                >
-                  {selectedRequester.name}
-                </span>
-                <button
-                  type="button"
-                  className="btn btn-sm btn-light zen-focusable"
-                  onClick={requester.clearRequester}
-                >
-                  Change Requester
-                </button>
-              </div>
-            )}
-
             {/* Lab 3 — the signed-in user, their role, and Log Out. */}
             {auth?.user && <ProfileMenu auth={auth} />}
           </div>

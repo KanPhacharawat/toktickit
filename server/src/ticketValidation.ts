@@ -14,7 +14,6 @@ export const DESCRIPTION_MIN = 10;
 export const DESCRIPTION_MAX = 5000;
 
 export interface CreateTicketInput {
-  requesterId: number;
   categoryId: number;
   relatedSystemId: number;
   summary: string;
@@ -64,11 +63,8 @@ export function validateCreateTicketBody(body: unknown): ValidationResult {
 
   const raw = body as Record<string, unknown>;
 
-  // BR-16 — a Ticket must reference a Development Requester.
-  const requesterId = parseId(raw.requesterId);
-  if (requesterId === null) {
-    fieldErrors.requesterId = "A valid requester is required.";
-  }
+  // Lab 3 BR-03/BR-18 — the Requester is the authenticated caller, never a
+  // client-supplied value. A `requesterId` field, if present, is ignored.
 
   // BR-13
   const categoryId = parseId(raw.categoryId);
@@ -118,7 +114,6 @@ export function validateCreateTicketBody(body: unknown): ValidationResult {
   return {
     fieldErrors,
     input: {
-      requesterId: requesterId as number,
       categoryId: categoryId as number,
       relatedSystemId: relatedSystemId as number,
       summary: summary as string,

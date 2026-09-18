@@ -1,13 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Lab2App from "../../src/Lab2App.js";
 import * as api from "../../src/api.js";
-
-const REQUESTERS: api.DevelopmentRequester[] = [
-  { id: 11, name: "Alpha Requester", email: "alpha@example.com", department: "Finance" },
-  { id: 22, name: "Beta Requester", email: "beta@example.com", department: "Library" },
-];
+import { renderAsRequester } from "./testAuth.js";
 
 const CATEGORIES: api.ReferenceItem[] = [
   { id: 7, name: "Test Category One" },
@@ -22,6 +18,8 @@ function row(overrides: Partial<api.TicketListRow> = {}): api.TicketListRow {
     category: "Test Category One",
     requestedPriority: "LOW",
     currentStatus: "New",
+    ticketOwner: null,
+    problemAppearsResolvedAt: null,
     updatedAt: "2026-09-05T12:30:00.000Z",
     ...overrides,
   };
@@ -36,6 +34,7 @@ const ROWS: api.TicketListRow[] = [
     category: "Test Category Two",
     requestedPriority: "URGENT",
     currentStatus: "InProgress",
+    ticketOwner: { name: "Somchai Staff" },
     updatedAt: "2026-09-06T09:00:00.000Z",
   }),
 ];
@@ -56,26 +55,18 @@ function listResponse(
   };
 }
 
-/** Mocks the requester selector and the Category filter's reference data. */
+/** Mocks the Category filter's reference data. */
 function mockShell() {
-  vi.spyOn(api, "fetchActiveRequesters").mockResolvedValue(REQUESTERS);
   vi.spyOn(api, "fetchCategories").mockResolvedValue(CATEGORIES);
 }
 
-/** Selects a requester and lands on My Tickets (the default view). */
-async function openMyTickets(
-  user: ReturnType<typeof userEvent.setup>,
-  requester: RegExp = /Alpha Requester/,
-) {
-  render(<Lab2App />);
-
-  await user.selectOptions(
-    await screen.findByLabelText(/development requester/i),
-    screen.getByRole("option", { name: requester }),
-  );
-  await user.click(screen.getByRole("button", { name: /continue/i }));
-
+/** Signs in as the fixture Requester and lands on My Tickets (the default view). */
+async function openMyTickets(user: ReturnType<typeof userEvent.setup>) {
+  renderAsRequester(<Lab2App />);
   await screen.findByRole("heading", { name: /my tickets/i });
+  // `user` is accepted for call-site symmetry with the other open helpers,
+  // even though signing in here needs no interaction.
+  void user;
 }
 
 /** The filter panel is collapsed by default; open it before using it. */
@@ -105,19 +96,19 @@ describe("UI-08 / UI-09 — My Tickets states and controls (AC-11, AC-13–17)",
   });
 
   // -------------------------------------------------------------------------
-  // Ownership (AC-11)
+  // Ownership (AC-11, Lab 3 BR-03)
   // -------------------------------------------------------------------------
-  it("requests only the selected requester's tickets", async () => {
+  it("requests the list with no requesterId argument (ownership comes from the session)", async () => {
     const user = userEvent.setup();
     const spy = vi.spyOn(api, "fetchMyTickets").mockResolvedValue(listResponse());
 
     await openMyTickets(user);
 
     await waitFor(() => expect(spy).toHaveBeenCalled());
-    expect(lastCall()[0]).toBe(11);
+    expect(spy.mock.calls[0]).toHaveLength(1);
   });
 
-  it("renders the documented columns for each ticket", async () => {
+  it("renders the documented columns for each ticket, including Assigned To", async () => {
     const user = userEvent.setup();
     vi.spyOn(api, "fetchMyTickets").mockResolvedValue(listResponse());
 
@@ -129,6 +120,7 @@ describe("UI-08 / UI-09 — My Tickets states and controls (AC-11, AC-13–17)",
       /category/i,
       /requested priority/i,
       /current status/i,
+      /assigned to/i,
       /last updated/i,
     ]) {
       expect(screen.getByRole("columnheader", { name: header })).toBeInTheDocument();
@@ -139,7 +131,21 @@ describe("UI-08 / UI-09 — My Tickets states and controls (AC-11, AC-13–17)",
     expect(within(rows[0]).getByText("TT-20260905-0001")).toBeInTheDocument();
     expect(within(rows[0]).getByText("Printer jams constantly")).toBeInTheDocument();
     expect(within(rows[0]).getByText("Test Category One")).toBeInTheDocument();
+    expect(within(rows[0]).getByText(/unassigned/i)).toBeInTheDocument();
     expect(within(rows[1]).getByText(/in progress/i)).toBeInTheDocument();
+    expect(within(rows[1]).getByText("Somchai Staff")).toBeInTheDocument();
+  });
+
+  it("shows the resolution badge when problemAppearsResolvedAt is set", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "fetchMyTickets").mockResolvedValue(
+      listResponse([row({ problemAppearsResolvedAt: "2026-09-06T09:00:00.000Z" })]),
+    );
+
+    await openMyTickets(user);
+
+    const rows = await waitFor(() => ticketRows());
+    expect(within(rows[0]).getByText(/problem appears resolved/i)).toBeInTheDocument();
   });
 
   // -------------------------------------------------------------------------
@@ -318,7 +324,7 @@ describe("UI-08 / UI-09 — My Tickets states and controls (AC-11, AC-13–17)",
     await user.type(screen.getByLabelText(/^search$/i), "printer");
     await user.click(screen.getByRole("button", { name: /^search$/i }));
 
-    await waitFor(() => expect(lastCall()[1]).toMatchObject({ search: "printer" }));
+    await waitFor(() => expect(lastCall()[0]).toMatchObject({ search: "printer" }));
     expect(
       screen.getByRole("button", { name: /^filters/i }),
     ).toHaveAttribute("aria-expanded", "false");
@@ -337,7 +343,7 @@ describe("UI-08 / UI-09 — My Tickets states and controls (AC-11, AC-13–17)",
     await user.type(screen.getByLabelText(/^search$/i), "  printer  ");
     await user.click(screen.getByRole("button", { name: /^search$/i }));
 
-    await waitFor(() => expect(lastCall()[1]).toMatchObject({ search: "printer" }));
+    await waitFor(() => expect(lastCall()[0]).toMatchObject({ search: "printer" }));
   });
 
   it("does not call the API on every keystroke", async () => {
@@ -360,16 +366,16 @@ describe("UI-08 / UI-09 — My Tickets states and controls (AC-11, AC-13–17)",
 
     await openFilters(user);
     await user.selectOptions(screen.getByLabelText(/^category$/i), "8");
-    await waitFor(() => expect(lastCall()[1]).toMatchObject({ categoryId: "8" }));
+    await waitFor(() => expect(lastCall()[0]).toMatchObject({ categoryId: "8" }));
 
     await user.selectOptions(screen.getByLabelText(/requested priority/i), "URGENT");
     await waitFor(() =>
-      expect(lastCall()[1]).toMatchObject({ requestedPriority: "URGENT" }),
+      expect(lastCall()[0]).toMatchObject({ requestedPriority: "URGENT" }),
     );
 
     await user.selectOptions(screen.getByLabelText(/current status/i), "Resolved");
     await waitFor(() =>
-      expect(lastCall()[1]).toMatchObject({
+      expect(lastCall()[0]).toMatchObject({
         categoryId: "8",
         requestedPriority: "URGENT",
         currentStatus: "Resolved",
@@ -394,6 +400,22 @@ describe("UI-08 / UI-09 — My Tickets states and controls (AC-11, AC-13–17)",
     ).toBeInTheDocument();
   });
 
+  it("lists the eight Lab 3 statuses in the status filter", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "fetchMyTickets").mockResolvedValue(listResponse());
+
+    await openMyTickets(user);
+    await openFilters(user);
+
+    const statusFilter = screen.getByLabelText(/current status/i);
+    for (const status of api.TICKET_STATUSES) {
+      const label = status.replace(/([a-z])([A-Z])/g, "$1 $2");
+      expect(
+        within(statusFilter).getByRole("option", { name: label }),
+      ).toBeInTheDocument();
+    }
+  });
+
   it("sorts by the documented fields and orders (AC-15)", async () => {
     const user = userEvent.setup();
     const spy = vi.spyOn(api, "fetchMyTickets").mockResolvedValue(listResponse());
@@ -402,14 +424,14 @@ describe("UI-08 / UI-09 — My Tickets states and controls (AC-11, AC-13–17)",
     await waitFor(() => expect(spy).toHaveBeenCalled());
 
     // BR-24 — the default request is last-updated descending.
-    expect(lastCall()[1]).toMatchObject({ sortBy: "updatedAt", sortOrder: "desc" });
+    expect(lastCall()[0]).toMatchObject({ sortBy: "updatedAt", sortOrder: "desc" });
 
     await openFilters(user);
     await user.selectOptions(screen.getByLabelText(/sort by/i), "ticketNumber");
-    await waitFor(() => expect(lastCall()[1]).toMatchObject({ sortBy: "ticketNumber" }));
+    await waitFor(() => expect(lastCall()[0]).toMatchObject({ sortBy: "ticketNumber" }));
 
     await user.selectOptions(screen.getByLabelText(/^order$/i), "asc");
-    await waitFor(() => expect(lastCall()[1]).toMatchObject({ sortOrder: "asc" }));
+    await waitFor(() => expect(lastCall()[0]).toMatchObject({ sortOrder: "asc" }));
   });
 
   it("navigates between pages and shows pagination metadata (AC-16)", async () => {
@@ -434,7 +456,7 @@ describe("UI-08 / UI-09 — My Tickets states and controls (AC-11, AC-13–17)",
     );
     await user.click(screen.getByRole("button", { name: /next/i }));
 
-    await waitFor(() => expect(lastCall()[1]).toMatchObject({ page: 2 }));
+    await waitFor(() => expect(lastCall()[0]).toMatchObject({ page: 2 }));
     expect(await screen.findByTestId("page-indicator")).toHaveTextContent(
       "Page 2 of 3",
     );
@@ -467,7 +489,7 @@ describe("UI-08 / UI-09 — My Tickets states and controls (AC-11, AC-13–17)",
     await user.selectOptions(screen.getByLabelText(/per page/i), "20");
 
     await waitFor(() =>
-      expect(lastCall()[1]).toMatchObject({ pageSize: 20, page: 1 }),
+      expect(lastCall()[0]).toMatchObject({ pageSize: 20, page: 1 }),
     );
   });
 
@@ -483,12 +505,12 @@ describe("UI-08 / UI-09 — My Tickets states and controls (AC-11, AC-13–17)",
     await waitFor(() => expect(spy).toHaveBeenCalled());
 
     await user.click(screen.getByRole("button", { name: /next/i }));
-    await waitFor(() => expect(lastCall()[1]).toMatchObject({ page: 2 }));
+    await waitFor(() => expect(lastCall()[0]).toMatchObject({ page: 2 }));
 
     await openFilters(user);
     await user.selectOptions(screen.getByLabelText(/requested priority/i), "HIGH");
     await waitFor(() =>
-      expect(lastCall()[1]).toMatchObject({ page: 1, requestedPriority: "HIGH" }),
+      expect(lastCall()[0]).toMatchObject({ page: 1, requestedPriority: "HIGH" }),
     );
   });
 
@@ -503,12 +525,12 @@ describe("UI-08 / UI-09 — My Tickets states and controls (AC-11, AC-13–17)",
     await user.click(screen.getByRole("button", { name: /^search$/i }));
     await openFilters(user);
     await user.selectOptions(screen.getByLabelText(/requested priority/i), "HIGH");
-    await waitFor(() => expect(lastCall()[1]).toMatchObject({ search: "printer" }));
+    await waitFor(() => expect(lastCall()[0]).toMatchObject({ search: "printer" }));
 
     await user.click(screen.getByRole("button", { name: /clear filters/i }));
 
     await waitFor(() =>
-      expect(lastCall()[1]).toMatchObject({
+      expect(lastCall()[0]).toMatchObject({
         search: "",
         categoryId: "",
         requestedPriority: "",
@@ -516,85 +538,6 @@ describe("UI-08 / UI-09 — My Tickets states and controls (AC-11, AC-13–17)",
         page: 1,
       }),
     );
-    expect(screen.getByLabelText(/^search$/i)).toHaveValue("");
-  });
-
-  // -------------------------------------------------------------------------
-  // AC-04 — changing requester reloads the list
-  // -------------------------------------------------------------------------
-  it("reloads the list for the new requester after a change", async () => {
-    const user = userEvent.setup();
-    const spy = vi.spyOn(api, "fetchMyTickets").mockResolvedValue(listResponse());
-
-    await openMyTickets(user);
-    await waitFor(() => expect(lastCall()[0]).toBe(11));
-
-    await user.click(screen.getByRole("button", { name: /change requester/i }));
-    await user.selectOptions(
-      await screen.findByLabelText(/development requester/i),
-      screen.getByRole("option", { name: /Beta Requester/ }),
-    );
-    await user.click(screen.getByRole("button", { name: /continue/i }));
-
-    await waitFor(() => expect(lastCall()[0]).toBe(22));
-    expect(spy.mock.calls.length).toBeGreaterThanOrEqual(2);
-  });
-
-  it("returns to My Tickets when the requester changes from another screen (BR-07)", async () => {
-    const user = userEvent.setup();
-    vi.spyOn(api, "fetchMyTickets").mockResolvedValue(listResponse());
-    vi.spyOn(api, "fetchRelatedSystems").mockResolvedValue([
-      { id: 21, name: "Test System One" },
-    ]);
-
-    await openMyTickets(user);
-
-    // Move to Create Ticket, then switch requester from there.
-    await user.click(
-      within(screen.getByRole("navigation", { name: /main/i })).getByRole(
-        "button",
-        { name: /create ticket/i },
-      ),
-    );
-    await screen.findByRole("form", { name: /create ticket/i });
-
-    await user.click(screen.getByRole("button", { name: /change requester/i }));
-    await user.selectOptions(
-      await screen.findByLabelText(/development requester/i),
-      screen.getByRole("option", { name: /Beta Requester/ }),
-    );
-    await user.click(screen.getByRole("button", { name: /continue/i }));
-
-    // The new requester lands on their own ticket list, not the previous
-    // requester's Create Ticket form.
-    expect(
-      await screen.findByRole("heading", { name: /my tickets/i }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("form", { name: /create ticket/i }),
-    ).not.toBeInTheDocument();
-    await waitFor(() => expect(lastCall()[0]).toBe(22));
-  });
-
-  it("discards the previous requester's filters when the requester changes", async () => {
-    const user = userEvent.setup();
-    vi.spyOn(api, "fetchMyTickets").mockResolvedValue(listResponse());
-
-    await openMyTickets(user);
-    await user.type(screen.getByLabelText(/^search$/i), "printer");
-    await user.click(screen.getByRole("button", { name: /^search$/i }));
-    await waitFor(() => expect(lastCall()[1]).toMatchObject({ search: "printer" }));
-
-    await user.click(screen.getByRole("button", { name: /change requester/i }));
-    await user.selectOptions(
-      await screen.findByLabelText(/development requester/i),
-      screen.getByRole("option", { name: /Beta Requester/ }),
-    );
-    await user.click(screen.getByRole("button", { name: /continue/i }));
-
-    await waitFor(() => expect(lastCall()[0]).toBe(22));
-    // The new requester starts from the documented defaults, not Alpha's search.
-    expect(lastCall()[1]).toMatchObject({ search: "" });
     expect(screen.getByLabelText(/^search$/i)).toHaveValue("");
   });
 

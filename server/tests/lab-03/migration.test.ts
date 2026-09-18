@@ -24,7 +24,13 @@ import { createTestUser, removeTestUsers } from "./helpers.js";
 
 const SERVER_DIR = path.resolve(import.meta.dirname, "../..");
 const MIGRATIONS_DIR = path.join(SERVER_DIR, "prisma", "migrations");
-const LAB3_MIGRATION = "20260917150000_lab3_users_sessions";
+// Every Lab 3 migration, in order. All of them run together, after the Lab 2
+// fixture rows are inserted, so the migration history matches a real Lab 2
+// database being upgraded.
+const LAB3_MIGRATIONS = [
+  "20260917150000_lab3_users_sessions",
+  "20260918090000_lab3_ticket_ownership_and_threads",
+];
 
 /** A variable from the environment, or from server/.env as Prisma reads it. */
 async function envValue(name: string): Promise<string> {
@@ -90,7 +96,7 @@ describe("MIG-01 — Lab 3 migration on Lab 2 data (AC-56, BR-57, FR-50)", () =>
       path.join(workDir, "migrations", "migration_lock.toml"),
     );
     const lab2 = (await fs.readdir(MIGRATIONS_DIR)).filter(
-      (name) => name !== LAB3_MIGRATION && name !== "migration_lock.toml",
+      (name) => !LAB3_MIGRATIONS.includes(name) && name !== "migration_lock.toml",
     );
     for (const name of lab2) await copyMigration(name);
     await migrateDeploy();
@@ -114,7 +120,7 @@ describe("MIG-01 — Lab 3 migration on Lab 2 data (AC-56, BR-57, FR-50)", () =>
     // One statement per call: Prisma raw queries are prepared statements.
     for (const sql of fixtures) await scratch.$queryRawUnsafe(sql);
 
-    await copyMigration(LAB3_MIGRATION);
+    for (const name of LAB3_MIGRATIONS) await copyMigration(name);
     await migrateDeploy();
   }, 180_000);
 

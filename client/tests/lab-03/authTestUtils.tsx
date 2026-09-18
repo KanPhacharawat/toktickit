@@ -23,12 +23,22 @@ export const STAFF: CurrentUser = {
   mustChangePassword: false,
 };
 
-/** Stubs the Lab 2 screens behind the gate so these suites stay on auth. */
+/** Stubs the Lab 2/3 screens behind the gate so these suites stay on auth. */
 export function stubLab2Screens() {
   vi.spyOn(api, "fetchCategories").mockResolvedValue([]);
   vi.spyOn(api, "fetchMyTickets").mockResolvedValue({
     data: [],
     meta: { page: 1, pageSize: 10, totalItems: 0, totalPages: 0 },
+  });
+  vi.spyOn(api, "fetchQueue").mockResolvedValue({
+    data: [],
+    meta: {
+      page: 1,
+      pageSize: 20,
+      totalItems: 0,
+      totalPages: 0,
+      counts: { active: 0, unassigned: 0, assignedToMe: 0 },
+    },
   });
 }
 

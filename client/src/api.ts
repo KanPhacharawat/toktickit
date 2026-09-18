@@ -535,6 +535,115 @@ export async function createTicket(
 }
 
 // ---------------------------------------------------------------------------
+// IT Staff Ticket Queue (Lab 3 api-spec.md §7.1)
+// ---------------------------------------------------------------------------
+
+export const IT_PRIORITIES = ["LOW", "MEDIUM", "HIGH", "URGENT"] as const;
+export type ItPriority = (typeof IT_PRIORITIES)[number];
+
+export const QUEUE_SORTABLE_FIELDS = [
+  "ticketDate",
+  "updatedAt",
+  "ticketNumber",
+  "itPriority",
+  "requestedPriority",
+] as const;
+export type QueueSortableField = (typeof QUEUE_SORTABLE_FIELDS)[number];
+
+export type StatusGroup = "active" | "closed";
+export type Ownership = "mine" | "unassigned";
+
+export interface QueueOwner {
+  id: number;
+  name: string;
+  role: string;
+}
+
+export interface QueueRow {
+  id: number;
+  ticketNumber: string;
+  ticketDate: string;
+  summary: string;
+  category: ReferenceItem;
+  requester: { id: number; name: string; email: string };
+  requestedPriority: RequestedPriority;
+  itPriority: ItPriority;
+  currentStatus: string;
+  ticketOwner: QueueOwner | null;
+  problemAppearsResolvedAt: string | null;
+  updatedAt: string;
+}
+
+export interface QueueCounts {
+  active: number;
+  unassigned: number;
+  assignedToMe: number;
+}
+
+export interface QueueMeta {
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
+  counts: QueueCounts;
+}
+
+export interface QueueParams {
+  search?: string;
+  statusGroup?: StatusGroup | "";
+  currentStatus?: string;
+  ownership?: Ownership | "";
+  itPriority?: string;
+  requestedPriority?: string;
+  categoryId?: string;
+  sortBy?: QueueSortableField;
+  sortOrder?: SortOrder;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface QueueResponse {
+  data: QueueRow[];
+  meta: QueueMeta;
+}
+
+/** api-spec.md §7.1 — IT Staff and Administrator only. */
+export async function fetchQueue(params: QueueParams = {}): Promise<QueueResponse> {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== "") {
+      query.set(key, String(value));
+    }
+  }
+  const suffix = query.toString() ? `?${query}` : "";
+
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/tickets/queue${suffix}`, { credentials: "include" });
+  } catch {
+    throw new ApiError("Could not reach the server. Please try again.", {
+      status: 0,
+      code: "NETWORK_ERROR",
+    });
+  }
+
+  const body = await readJson(res);
+  if (!res.ok) {
+    notifyIfSessionExpired(res.status);
+    throw toApiError(res, body, "Could not load the queue. Please try again.");
+  }
+
+  const parsed = body as Partial<QueueResponse> | null;
+  if (!Array.isArray(parsed?.data) || !parsed?.meta) {
+    throw new ApiError("The queue response was not understood.", {
+      status: res.status,
+      code: "BAD_RESPONSE",
+    });
+  }
+  return { data: parsed.data, meta: parsed.meta };
+}
+
+// ---------------------------------------------------------------------------
 // Public Comments and "Problem Appears Resolved" (Lab 3)
 // ---------------------------------------------------------------------------
 

@@ -24,7 +24,11 @@ export default function AppShell({
   // Optional: the voluntary Change Password screen renders the shell outside
   // the Requester screens, and some component tests render without auth.
   const auth = useOptionalAuth();
-  const showNav = Boolean(auth?.user && onNavigate);
+  const role = auth?.user?.role;
+  const showRequesterNav = Boolean(role === "Requester" && onNavigate);
+  // IT Staff and Administrator have one destination today (ui-spec.md §2.2);
+  // User Management arrives with its own issue.
+  const showStaffNav = role === "ITStaff" || role === "Administrator";
 
   return (
     <div className="min-vh-100">
@@ -32,7 +36,7 @@ export default function AppShell({
         <div className="container d-flex flex-wrap align-items-center gap-3 py-3">
           <span className="fw-bold fs-5">TokTickIT</span>
 
-          {showNav && (
+          {showRequesterNav && (
             <nav
               className="d-flex flex-wrap align-items-center gap-3"
               aria-label="Main"
@@ -53,6 +57,17 @@ export default function AppShell({
               >
                 Create Ticket
               </button>
+            </nav>
+          )}
+
+          {showStaffNav && (
+            <nav
+              className="d-flex flex-wrap align-items-center gap-3"
+              aria-label="Main"
+            >
+              <span className="zen-nav-link" aria-current="page">
+                Ticket Queue
+              </span>
             </nav>
           )}
 

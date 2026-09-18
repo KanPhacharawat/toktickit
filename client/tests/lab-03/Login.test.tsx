@@ -27,7 +27,7 @@ describe("UI-01 — Login validation and controls (AC-08, AC-61)", () => {
     const { email } = await openLogin();
     expect(screen.getByRole("heading", { name: "TokTickIT" })).toBeInTheDocument();
     expect(screen.getByText(/sign in to your account/i)).toBeInTheDocument();
-    expect(email).toHaveFocus();
+    await waitFor(() => expect(email).toHaveFocus());
     // No self-registration, password reset, or requester selector.
     expect(screen.queryByText(/forgot/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/development requester/i)).not.toBeInTheDocument();

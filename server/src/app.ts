@@ -4,6 +4,7 @@ import { getPrisma } from "./prisma.js";
 import { ticketsRouter } from "./tickets.js";
 import { attachmentsRouter } from "./attachments.js";
 import { commentsRouter } from "./comments.js";
+import { queueRouter } from "./queue.js";
 import { authRouter } from "./auth/routes.js";
 import { bcryptCost } from "./auth/credentials.js";
 import { protect } from "./auth/middleware.js";
@@ -102,6 +103,10 @@ app.get("/api/categories", ...protect(), async (_req: Request, res: Response) =>
 // ---------------------------------------------------------------------------
 
 app.use(ticketsRouter);
+// Lab 3 — queueRouter's literal "/api/tickets/queue" must be registered
+// before attachmentsRouter's "/api/tickets/:ticketId", or Express would try
+// to treat "queue" as a ticket id and never reach this route.
+app.use(queueRouter);
 app.use(attachmentsRouter);
 app.use(commentsRouter);
 

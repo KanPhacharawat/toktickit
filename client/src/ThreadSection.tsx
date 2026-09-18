@@ -180,7 +180,7 @@ export default function ThreadSection({
                   {new Date(entry.createdAt).toLocaleString()}
                 </time>
               </div>
-              <p className="mb-0" style={{ whiteSpace: "pre-wrap" }}>
+              <p className="mb-0" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
                 {entry.body}
               </p>
             </li>

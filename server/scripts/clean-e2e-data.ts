@@ -22,6 +22,22 @@ async function main() {
     where: { summary: { startsWith: "E2E " } },
   });
 
+  // Lab 3 — accounts the user-administration specs create use the reserved
+  // `@toktickit.test` domain (tests.md §1.2). Their tickets are gone by now;
+  // release any that still name one as owner, then remove the accounts.
+  const e2eUsers = await prisma.user.findMany({
+    where: { email: { endsWith: "@toktickit.test" } },
+    select: { id: true },
+  });
+  const e2eUserIds = e2eUsers.map((u) => u.id);
+  if (e2eUserIds.length > 0) {
+    await prisma.ticket.updateMany({
+      where: { ticketOwnerId: { in: e2eUserIds } },
+      data: { ticketOwnerId: null },
+    });
+    await prisma.user.deleteMany({ where: { id: { in: e2eUserIds } } });
+  }
+
   const referenced = new Set(
     (
       await prisma.attachment.findMany({ select: { storageKey: true } })
@@ -37,7 +53,7 @@ async function main() {
   }
 
   console.log(
-    `Removed ${count} ticket(s) and ${orphans} orphaned upload file(s) left by previous E2E runs.`,
+    `Removed ${count} ticket(s), ${e2eUserIds.length} E2E user(s) and ${orphans} orphaned upload file(s) left by previous E2E runs.`,
   );
 }
 

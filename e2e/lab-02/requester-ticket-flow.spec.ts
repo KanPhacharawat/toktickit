@@ -1,7 +1,6 @@
 import { test, expect } from "@playwright/test";
 import {
   VIEWPORTS,
-  chooseRequesterOption,
   createTicket,
   expectNoHorizontalScroll,
   gotoCreateTicket,
@@ -11,6 +10,7 @@ import {
   openApp,
   openTicket,
   selectRequester,
+  signOut,
   uniqueSummary,
 } from "./helpers.js";
 
@@ -38,20 +38,16 @@ const MOBILE = VIEWPORTS.mobile;
 // ---------------------------------------------------------------------------
 // E2E-01 — Complete Create Ticket flow (AC-01, AC-05, AC-06)
 // ---------------------------------------------------------------------------
-test("E2E-01 — requester selects identity, creates a ticket, sees the official number", async ({
+test("E2E-01 — requester signs in, creates a ticket, sees the official number", async ({
   page,
 }) => {
   await page.setViewportSize(DESKTOP);
 
-  // AC-01 — the selection screen lists active requesters.
+  // Lab 3 — identity comes from the login; the Development Requester selector
+  // and its testing-only notice are gone (FR-19).
   await openApp(page);
-  const select = page.getByLabel(/development requester/i);
-  await expect(select).toBeVisible();
-  await expect(page.getByRole("note")).toContainText(/not a real login/i);
-  // AC-03 — the inactive seeded requester is not offered.
-  await expect(
-    page.getByRole("option", { name: /Inactive Requester/ }),
-  ).toHaveCount(0);
+  await expect(page.getByLabel(/development requester/i)).toHaveCount(0);
+  await expect(page.getByRole("note")).toHaveCount(0);
 
   await selectRequester(page, "Requester A");
 
@@ -121,7 +117,7 @@ test("E2E-02 — created ticket appears and search/filter/sort/pagination work",
 // ---------------------------------------------------------------------------
 // E2E-03 — Ownership flow (AC-12)
 // ---------------------------------------------------------------------------
-test("E2E-03 — switching requester hides the other requester's ticket data", async ({
+test("E2E-03 — signing in as another requester hides the first requester's ticket data", async ({
   page,
 }) => {
   await page.setViewportSize(DESKTOP);
@@ -133,9 +129,10 @@ test("E2E-03 — switching requester hides the other requester's ticket data", a
   // The owner can open it before the switch.
   await openTicket(page, ticketNumber);
 
-  // Switch to Requester B.
-  await page.getByRole("button", { name: /change requester/i }).click();
-  await chooseRequesterOption(page, "Requester B");
+  // Sign out and sign in as Requester B.
+  await signOut(page);
+  await selectRequester(page, "Requester B");
+  await gotoMyTickets(page);
 
   // AC-12 — Requester A's ticket is not in Requester B's list.
   await page.getByLabel(/^search$/i).fill(ticketNumber);
@@ -159,52 +156,38 @@ test("E2E-03b — another requester's ticket cannot be fetched directly", async 
   const summary = uniqueSummary("direct access");
   const ticketNumber = await createTicket(page, summary);
 
-  // Lab 3 — these routes now require a session. This `request` fixture is a
-  // separate context from `page`'s browser cookies, so it signs in on its
-  // own; the login response's cookie is then sent automatically on every
-  // later call in this context. Which Requester logs in only has to pass the
-  // role gate — the ownership checks below are still keyed on the
-  // `:requesterId` path parameter, unchanged from Lab 2.
-  const login = await request.post("http://localhost:3000/api/auth/login", {
-    data: E2E_LOGIN,
-  });
-  expect(login.status()).toBe(200);
-
-  // Find the owner's requester id and the ticket id from the owner's own list.
-  const owned = await request.get("http://localhost:3000/api/development-requesters");
-  const requesters = (await owned.json()).data as Array<{ id: number; name: string }>;
-  const requesterA = requesters.find((r) => r.name === "Requester A")!;
-  const requesterB = requesters.find((r) => r.name === "Requester B")!;
-
-  const list = await request.get(
-    `http://localhost:3000/api/requesters/${requesterA.id}/tickets?search=${ticketNumber}`,
-  );
+  // Lab 3 — routes are keyed on the session, not a requester id in the path,
+  // and another requester's ticket answers 404 exactly like a missing one
+  // (BR-09). This `request` fixture is a separate context from `page`'s
+  // browser cookies, so it signs in on its own.
+  const owner = await request.post("http://localhost:3000/api/auth/login", { data: E2E_LOGIN });
+  expect(owner.status()).toBe(200);
+  const list = await request.get(`http://localhost:3000/api/tickets/mine?search=${ticketNumber}`);
   const rows = (await list.json()).data as Array<{ id: number }>;
   expect(rows).toHaveLength(1);
   const ticketId = rows[0].id;
 
   // The owner can read it.
-  const asOwner = await request.get(
-    `http://localhost:3000/api/requesters/${requesterA.id}/tickets/${ticketId}`,
-  );
-  expect(asOwner.status()).toBe(200);
+  expect((await request.get(`http://localhost:3000/api/tickets/${ticketId}`)).status()).toBe(200);
 
   // Another requester cannot — and learns nothing about it.
-  const asOther = await request.get(
-    `http://localhost:3000/api/requesters/${requesterB.id}/tickets/${ticketId}`,
-  );
-  expect(asOther.status()).toBe(403);
+  await request.post("http://localhost:3000/api/auth/logout");
+  const other = await request.post("http://localhost:3000/api/auth/login", {
+    data: { email: "requester-b@example.com", password: E2E_LOGIN.password },
+  });
+  expect(other.status()).toBe(200);
+  const asOther = await request.get(`http://localhost:3000/api/tickets/${ticketId}`);
+  expect(asOther.status()).toBe(404);
   const body = JSON.stringify(await asOther.json());
   expect(body).not.toContain(ticketNumber);
   expect(body).not.toContain(summary);
 
   // Their attachment endpoints are closed too (AC-22).
   const attachments = await request.get(
-    `http://localhost:3000/api/requesters/${requesterB.id}/tickets/${ticketId}/attachments`,
+    `http://localhost:3000/api/tickets/${ticketId}/attachments`,
   );
-  expect(attachments.status()).toBe(403);
+  expect(attachments.status()).toBe(404);
 });
-
 // ---------------------------------------------------------------------------
 // E2E-04 — Attachment lifecycle (AC-19–21)
 // ---------------------------------------------------------------------------
@@ -337,7 +320,7 @@ test("E2E-05 — the requester journey succeeds on desktop, tablet, and mobile",
     await expectNoHorizontalScroll(page);
 
     // Reset for the next size.
-    await page.getByRole("button", { name: /change requester/i }).click();
+    await signOut(page);
   }
 });
 
@@ -349,32 +332,22 @@ test("E2E-06 — keyboard navigation and visible focus work on core screens", as
 }) => {
   await page.setViewportSize(DESKTOP);
 
-  // The selector is reachable and operable by keyboard alone.
-  await openApp(page);
-  const select = page.getByLabel(/development requester/i);
-  await expect(select).toBeVisible();
-  await select.focus();
-  await expect(select).toBeFocused();
-
-  const optionValue = await select
-    .locator("option", { hasText: "Requester A" })
-    .first()
-    .getAttribute("value");
-  await select.selectOption(optionValue!);
-  const continueButton = page.getByRole("button", { name: /continue/i });
-  await continueButton.focus();
-  await expect(continueButton).toBeFocused();
-
-  // A focused control must show a visible focus indicator, not `outline: none`.
-  const outline = await continueButton.evaluate((el) => {
+  // Signing in is operable by keyboard alone, and the focused control shows a
+  // visible focus indicator, not `outline: none`.
+  await selectRequester(page, "Requester A");
+  await signOut(page);
+  const email = page.getByLabel(/^email/i);
+  await email.focus();
+  await expect(email).toBeFocused();
+  await page.keyboard.press("Tab");
+  const password = page.getByLabel(/^password/i);
+  await expect(password).toBeFocused();
+  const outline = await password.evaluate((el) => {
     const style = window.getComputedStyle(el);
     return { style: style.outlineStyle, width: style.outlineWidth };
   });
   expect(outline.style).not.toBe("none");
-
-  await continueButton.press("Enter");
-  await expect(page.getByTestId("current-requester")).toBeVisible();
-
+  await selectRequester(page, "Requester A");
   // Create Ticket: every field has an accessible label.
   await gotoCreateTicket(page);
   for (const label of [

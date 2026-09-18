@@ -454,6 +454,52 @@ describe("UI-31 — Internal Notes separation (AC-43, FR-40)", () => {
     expect(screen.getByLabelText(/add an internal note/i)).toHaveValue("Internal draft");
   });
 
+  it("refreshes the ticket after a Public Comment, so the next operation is not reported as stale", async () => {
+    const user = userEvent.setup();
+    const owner = { id: 9, name: "Sam Staff", role: "ITStaff" as const };
+    const permissions = {
+      canClaim: false,
+      canAssign: false,
+      canReassign: true,
+      canChangeItPriority: true,
+      canChangeStatus: true,
+      canAddPublicComment: true,
+      canAddInternalNote: true,
+      canManageAttachments: false,
+    };
+    // A Public Comment moves the ticket's Last Updated on the server (BR-43).
+    const before = detail({ ticketOwner: owner, permissions });
+    const after = detail({ ticketOwner: owner, permissions, updatedAt: "2026-09-05T13:00:00.000Z" });
+
+    // The screen hands these to its children when it renders, so stub them first.
+    vi.spyOn(api, "postPublicComment").mockResolvedValue({
+      id: 1,
+      body: "Restarted the spooler.",
+      author: owner,
+      createdAt: "2026-09-05T13:00:00.000Z",
+    });
+    const setPriority = vi.spyOn(api, "setItPriority").mockResolvedValue(after);
+
+    await openTicketDetail(user, before);
+    // From here on the server reports the newer Last Updated.
+    const fetchDetail = vi.mocked(api.fetchStaffTicketDetail);
+    fetchDetail.mockClear();
+    fetchDetail.mockResolvedValue(after);
+
+    await user.type(screen.getByLabelText(/add a public comment/i), "Restarted the spooler.");
+    await user.click(screen.getByRole("button", { name: /post public comment/i }));
+    await waitFor(() => expect(fetchDetail).toHaveBeenCalled());
+    // The refresh happens in place: the page does not blank back to "Loading ticket…".
+    expect(screen.queryByText(/loading ticket/i)).not.toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText(/^it priority$/i), "URGENT");
+    await user.click(screen.getByRole("button", { name: /save it priority/i }));
+
+    await waitFor(() =>
+      expect(setPriority).toHaveBeenCalledWith(101, "URGENT", "2026-09-05T13:00:00.000Z"),
+    );
+  });
+
   it("is present on a Closed ticket", async () => {
     const user = userEvent.setup();
     await openTicketDetail(

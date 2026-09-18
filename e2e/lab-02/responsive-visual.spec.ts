@@ -12,9 +12,9 @@ import {
   gotoCreateTicket,
   gotoMyTickets,
   makePngFile,
-  openApp,
   openTicket,
   selectRequester,
+  signOut,
   uniqueSummary,
   type ViewportName,
 } from "./helpers.js";
@@ -26,7 +26,6 @@ import {
 // clipped, nothing overlapping, touch-friendly controls), and writes the
 // screenshots required by ui-spec.md §11 to:
 //
-//   artifacts/lab-02/screenshots/requester-selection/<viewport>.png
 //   artifacts/lab-02/screenshots/create-ticket/<viewport>.png
 //   artifacts/lab-02/screenshots/create-ticket/<viewport>-validation.png
 //   artifacts/lab-02/screenshots/my-tickets/<viewport>.png
@@ -83,19 +82,8 @@ for (const [name, size] of Object.entries(VIEWPORTS)) {
   }) => {
     await page.setViewportSize(size);
 
-    // -----------------------------------------------------------------------
-    // 1. Requester Selection
-    // -----------------------------------------------------------------------
-    await openApp(page);
-    await expect(page.getByLabel(/development requester/i)).toBeVisible();
-
-    await expectNoHorizontalScroll(page);
-    await expectLabelsIntact(page);
-    await expectButtonsIntact(page);
-    // The testing-only notice must be readable, not truncated.
-    await expectNotClipped(page.getByRole("note"), "testing-only notice");
-    await captureScreen(page, "requester-selection", viewport);
-
+    // Lab 3 replaced the Requester Selection screen with the login, whose
+    // screenshots live under artifacts/lab-03/screenshots/authentication/.
     await selectRequester(page, "Requester A");
 
     // -----------------------------------------------------------------------
@@ -266,8 +254,9 @@ test("VIS-empty — the My Tickets empty state is captured at every width", asyn
   for (const [name, size] of Object.entries(VIEWPORTS)) {
     await page.setViewportSize(size);
 
-    // Requester E is not used by any other spec, so their list stays empty.
-    await selectRequester(page, "Requester E");
+    // Requester C creates no tickets in any spec, so their list stays empty. (Requester D
+    // and E are seeded needing a password change, so they cannot reach My Tickets.)
+    await selectRequester(page, "Requester C");
     await gotoMyTickets(page);
 
     await expect(page.getByTestId("empty-state")).toBeVisible();
@@ -276,6 +265,6 @@ test("VIS-empty — the My Tickets empty state is captured at every width", asyn
 
     await captureScreen(page, "my-tickets", `${name}-empty` as ViewportName);
 
-    await page.getByRole("button", { name: /change requester/i }).click();
+    await signOut(page);
   }
 });

@@ -3,6 +3,10 @@
 TokTickIT is an IT Service Desk application for CPE334 Software Engineering course.
 The project uses a React frontend, an Express backend, PostgreSQL, and Prisma.
 
+As of Lab 3 it has real authentication and three roles — **Requester**,
+**IT Staff**, and **Administrator** — so people sign in with an email and
+password and see only what their role allows.
+
 ## Tech Stack
 
 ### Frontend
@@ -31,6 +35,8 @@ toktickit/
 │   ├── src/                       Screens, API client, Zen Green theme
 │   ├── tests/lab-01/              Lab 1 component tests
 │   ├── tests/lab-02/              Lab 2 unit, UI and style tests
+│   ├── tests/lab-03/              Lab 3 role navigation, login, queue, ticket detail,
+│   │                              user management tests
 │   ├── .env.example
 │   ├── package.json
 │   └── vite.config.ts
@@ -46,6 +52,8 @@ toktickit/
 │   ├── src/                       Routes, validation, attachment storage
 │   ├── tests/lab-01/              Lab 1 API tests
 │   ├── tests/lab-02/              Lab 2 unit and API tests
+│   ├── tests/lab-03/              Lab 3 auth, authorization, queue, ticket operation,
+│   │                              user admin, seed and migration tests
 │   ├── uploads/                   Attachment files (gitignored)
 │   ├── .env.example
 │   ├── package.json
@@ -57,8 +65,9 @@ toktickit/
 │
 ├── docs/
 │   ├── lab-01/
-│   └── lab-02/                    Specification, API spec, UI spec, test plan,
-│                                  peer review record, AI use record
+│   ├── lab-02/                    Specification, API spec, UI spec, test plan,
+│   │                              peer review record, AI use record
+│   └── lab-03/                    Same set of documents for Lab 3
 │
 ├── artifacts/lab-02/screenshots/  Desktop/tablet/mobile visual evidence (Lab 2)
 ├── artifacts/lab-03/screenshots/  Desktop/tablet/mobile visual evidence (Lab 3)
@@ -297,6 +306,12 @@ rules. API tests use Supertest against the Express app and a live database, and
 cover ticket creation, validation failures, duplicate submission, ownership,
 search/filter/sort/pagination, and the attachment lifecycle.
 
+Lab 3 adds unit tests (credentials, login throttle, sessions, status
+transitions, queue query, user validation) and API tests for authentication,
+the authorization matrix, the staff queue and ticket operations, comments and
+notes, and user administration. `migration.test.ts` migrates Lab 2 data to the
+Lab 3 schema and needs `MIGRATION_TEST_DATABASE_URL` (see above).
+
 Because these share one database, the suite runs one file at a time
 (`fileParallelism: false` in `vitest.config.ts`).
 
@@ -308,10 +323,11 @@ From the `client` directory:
 npm test
 ```
 
-Component tests cover the requester selector, Create Ticket, My Tickets, Ticket
-Detail, and the attachment section, plus a UI style suite that checks the Zen
-Green tokens, required-field markers, validation presentation, and read-only
-field styling.
+Component tests cover Create Ticket, My Tickets, Ticket Detail, and the
+attachment section, plus a UI style suite that checks the Zen Green tokens,
+required-field markers, validation presentation, and read-only field styling.
+Lab 3 adds tests for the app shell and role navigation, Login, Change Password,
+the IT Staff queue and ticket detail, and User Management.
 
 ### E2E, responsive and visual tests
 
@@ -442,6 +458,11 @@ Branch a new feature off the **current staging branch**, not `main` — `main`
 only receives a lab's work at release time, so a branch cut from it will be
 missing everything merged into staging so far.
 
+Lab 3 followed this flow: feature branches (`feature/lab3-specification`,
+`-authentication-foundation`, `-authorization-middleware`, `-requester-regression`,
+`-ticket-queue`, `-ticket-operation`, `feature/admin-management`, `-lab3-e2e-visual`,
+`-lab3-release`) merged into `lab3-staging`, which was released to `main` in one PR.
+
 Lab 2 feature branches:
 
 ```text
@@ -505,28 +526,62 @@ tickets, and manage attachments.
 **Out of scope for Lab 2:** real authentication, IT Staff workflow, comments,
 internal notes, and post-creation status changes.
 
+### Lab 3 — authentication, roles, and the staff workflow
+
+Lab 3 replaces the Development Requester selector with real sign-in and adds
+the IT Staff and Administrator sides of the service desk.
+
+- Email and password sign-in with bcrypt-hashed passwords, server-side
+  sessions in an HTTP-only cookie, login throttling, and forced password change
+  at first login
+- Role-based authorization enforced by the API on every route; the navigation
+  only offers what the role may use
+- **Requester:** the Lab 2 journey under the signed-in identity, plus Public
+  Comments and "Problem Appears Resolved"
+- **IT Staff:** a ticket queue, claiming, assigning and reassigning, IT priority,
+  status workflow, Public Comments, and Internal Notes (never visible to Requesters)
+- **Administrator:** create, edit, reset password for, activate and deactivate
+  users, with safety rules protecting the last administrator
+- Migration of the Lab 2 Development Requesters into the `User` model with ids and
+  tickets intact
+- Accessibility (keyboard flows and axe scans) and responsive checks for every role
+
 ### API endpoints
 
-| Method   | Endpoint                                                                | Purpose                          |
-| -------- | ----------------------------------------------------------------------- | -------------------------------- |
-| `GET`    | `/api/health`                                                           | Service health check             |
-| `POST`   | `/api/auth/login`                                                       | Sign in (sets the session cookie) |
-| `POST`   | `/api/auth/logout`                                                      | Sign out (revokes the session)   |
-| `GET`    | `/api/auth/me`                                                          | The signed-in user               |
-| `POST`   | `/api/auth/change-password`                                             | Change the signed-in user's password |
-| `GET`    | `/api/categories`                                                       | Active categories                |
-| `GET`    | `/api/related-systems`                                                  | Active related systems           |
-| `GET`    | `/api/development-requesters`                                           | Active Development Requesters    |
-| `POST`   | `/api/tickets`                                                          | Create one ticket                |
-| `GET`    | `/api/requesters/:requesterId/tickets`                                  | The requester's own ticket list  |
-| `GET`    | `/api/requesters/:requesterId/tickets/:ticketId`                        | Ticket detail                    |
-| `POST`   | `/api/requesters/:requesterId/tickets/:ticketId/attachments`            | Upload an attachment             |
-| `GET`    | `/api/requesters/:requesterId/tickets/:ticketId/attachments`            | Attachment metadata              |
-| `GET`    | `/api/requesters/:requesterId/tickets/:ticketId/attachments/:id`        | Download an active attachment    |
-| `DELETE` | `/api/requesters/:requesterId/tickets/:ticketId/attachments/:id`        | Soft-remove an attachment        |
+All routes except health and login require a signed-in session. The role column
+is the minimum the API enforces; the client has no URL routes, so authorization
+is proven by direct API calls as well as by the UI.
 
-The full request and response contract is in
-[`docs/lab-02/api-spec.md`](docs/lab-02/api-spec.md).
+| Method | Endpoint | Role |
+| --- | --- | --- |
+| `GET` | `/api/health` | Public |
+| `POST` | `/api/auth/login` | Public |
+| `POST` | `/api/auth/logout` | Any |
+| `GET` | `/api/auth/me` | Any |
+| `POST` | `/api/auth/change-password` | Any |
+| `GET` | `/api/categories`, `/api/related-systems` | Any |
+| `POST` | `/api/tickets` | Requester |
+| `GET` | `/api/tickets/mine` | Requester |
+| `GET` | `/api/tickets/queue` | IT Staff, Administrator |
+| `GET` | `/api/users/assignable` | IT Staff, Administrator |
+| `GET` | `/api/tickets/:ticketId` | Requester (own), IT Staff, Administrator |
+| `POST` | `/api/tickets/:ticketId/claim` | IT Staff, Administrator |
+| `PATCH` | `/api/tickets/:ticketId/owner` | IT Staff (unassigned), Owner, Administrator |
+| `PATCH` | `/api/tickets/:ticketId/it-priority` | Owner, Administrator |
+| `PATCH` | `/api/tickets/:ticketId/status` | Owner, Administrator |
+| `GET`, `POST` | `/api/tickets/:ticketId/public-comments` | Requester (own), IT Staff, Administrator |
+| `GET`, `POST` | `/api/tickets/:ticketId/internal-notes` | IT Staff, Administrator |
+| `POST` | `/api/tickets/:ticketId/problem-resolved` | Requester (own) |
+| `POST`, `DELETE` | `/api/tickets/:ticketId/attachments[/:attachmentId]` | Requester (own) |
+| `GET` | `/api/tickets/:ticketId/attachments[/:attachmentId]` | Requester (own), IT Staff, Administrator |
+| `GET`, `POST` | `/api/admin/users` | Administrator |
+| `GET`, `PATCH` | `/api/admin/users/:userId` | Administrator |
+| `POST` | `/api/admin/users/:userId/initial-password` | Administrator |
+
+The full request and response contract, including error shapes, is in
+[`docs/lab-03/api-spec.md`](docs/lab-03/api-spec.md). The Lab 2 routes under
+`/api/requesters/:requesterId/...` and `/api/development-requesters` were
+replaced by the routes above; the mapping is at the end of that document.
 
 ## Documentation
 
@@ -538,6 +593,12 @@ The full request and response contract is in
 | [`docs/lab-02/tests.md`](docs/lab-02/tests.md)                 | Test plan and acceptance-criteria traceability |
 | [`docs/lab-02/reviewer.md`](docs/lab-02/reviewer.md)           | Peer review record                           |
 | [`docs/lab-02/ai-use.md`](docs/lab-02/ai-use.md)               | AI use and reflection                        |
+| [`docs/lab-03/specification.md`](docs/lab-03/specification.md) | Lab 3 requirements, roles, business rules, acceptance criteria |
+| [`docs/lab-03/api-spec.md`](docs/lab-03/api-spec.md)           | Lab 3 endpoint contracts, authorization matrix |
+| [`docs/lab-03/ui-spec.md`](docs/lab-03/ui-spec.md)             | Lab 3 screens per role, responsive rules     |
+| [`docs/lab-03/tests.md`](docs/lab-03/tests.md)                 | Lab 3 test plan and traceability             |
+| [`docs/lab-03/reviewer.md`](docs/lab-03/reviewer.md)           | Lab 3 peer review record                     |
+| [`docs/lab-03/ai-use.md`](docs/lab-03/ai-use.md)               | Lab 3 AI use and reflection                  |
 
 ## Visual Evidence
 

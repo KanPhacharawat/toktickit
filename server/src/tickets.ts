@@ -7,6 +7,7 @@ import {
   ticketNumberPrefixFor,
 } from "./ticketNumber.js";
 import { buildOrderBy, parseTicketListQuery } from "./ticketListQuery.js";
+import { protect } from "./auth/middleware.js";
 
 export const ticketsRouter = Router();
 
@@ -55,27 +56,17 @@ function internalError(res: Response, message: string) {
 }
 
 /**
- * Shared handler for the My Tickets list (api-spec.md §7).
+ * The My Tickets list (api-spec.md §6.2).
  *
- * BR-08 — the Requester id is the only ownership key: every query is scoped to
- * it, so a Requester can never see another Requester's Tickets.
+ * BR-03 / BR-08 — the authenticated Requester's own id is the only ownership
+ * key: every query is scoped to it, so a Requester can never see another
+ * Requester's Tickets. There is no client-supplied requester id any more.
  */
 async function handleTicketList(
-  requesterIdRaw: string | undefined,
+  requesterId: number,
   rawQuery: Record<string, unknown>,
   res: Response,
 ) {
-  if (
-    requesterIdRaw === undefined ||
-    !/^\d+$/.test(requesterIdRaw) ||
-    Number(requesterIdRaw) <= 0
-  ) {
-    return validationError(res, {
-      requesterId: "A valid requester is required.",
-    });
-  }
-  const requesterId = Number.parseInt(requesterIdRaw, 10);
-
   const { query, fieldErrors } = parseTicketListQuery(rawQuery);
   if (!query) return validationError(res, fieldErrors);
 
@@ -126,7 +117,9 @@ async function handleTicketList(
           requestedPriority: true,
           currentStatus: true,
           updatedAt: true,
+          problemAppearsResolvedAt: true,
           category: { select: { name: true } },
+          ticketOwner: { select: { name: true } },
         },
       }),
     ]);
@@ -139,6 +132,9 @@ async function handleTicketList(
         category: ticket.category.name,
         requestedPriority: ticket.requestedPriority,
         currentStatus: ticket.currentStatus,
+        // api-spec.md §6.2 — new in Lab 3.
+        ticketOwner: ticket.ticketOwner ? { name: ticket.ticketOwner.name } : null,
+        problemAppearsResolvedAt: ticket.problemAppearsResolvedAt,
         updatedAt: ticket.updatedAt,
       })),
       meta: {
@@ -155,32 +151,27 @@ async function handleTicketList(
 }
 
 // ---------------------------------------------------------------------------
-// GET /api/requesters/:requesterId/tickets — the documented My Tickets list.
+// GET /api/tickets/mine — the My Tickets list (api-spec.md §6.2).
+//
+// Lab 3 — Requester role only (matrix §5.1 "My Tickets"). BR-03 — ownership
+// comes only from the session; a `requesterId` in the query is ignored.
 // ---------------------------------------------------------------------------
 ticketsRouter.get(
-  "/api/requesters/:requesterId/tickets",
-  async (req: Request, res: Response) =>
-    handleTicketList(req.params.requesterId, req.query, res),
+  "/api/tickets/mine",
+  ...protect("Requester"),
+  async (req: Request, res: Response) => {
+    const { requesterId: _ignored, ...rest } = req.query;
+    return handleTicketList(req.auth!.user.id, rest, res);
+  },
 );
 
 // ---------------------------------------------------------------------------
-// GET /api/tickets?requesterId=... — same list, requester supplied as a query
-// parameter. Ownership is still mandatory: without a requester there is no
-// list to return (BR-06, BR-08).
-// ---------------------------------------------------------------------------
-ticketsRouter.get("/api/tickets", async (req: Request, res: Response) => {
-  const { requesterId, ...rest } = req.query;
-  return handleTicketList(
-    typeof requesterId === "string" ? requesterId : undefined,
-    rest,
-    res,
-  );
-});
-
-// ---------------------------------------------------------------------------
 // FR-31 — active Related Systems for the Create Ticket reference data.
+//
+// Lab 3 — any authenticated, gated role (matrix §5.1 "Categories, Related
+// Systems").
 // ---------------------------------------------------------------------------
-ticketsRouter.get("/api/related-systems", async (_req, res) => {
+ticketsRouter.get("/api/related-systems", ...protect(), async (_req, res) => {
   try {
     const relatedSystems = await getPrisma().relatedSystem.findMany({
       where: { isActive: true, deletedAt: null },
@@ -195,22 +186,23 @@ ticketsRouter.get("/api/related-systems", async (_req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// POST /api/tickets — create one Ticket (api-spec.md §6).
+// POST /api/tickets — create one Ticket (api-spec.md §6.1).
+//
+// Lab 3 — Requester role only (matrix §5.1 "Create Ticket"). BR-03 / AC-03 —
+// the caller's session id is the owner; any `requesterId` in the body is
+// ignored and never errors.
 // ---------------------------------------------------------------------------
-ticketsRouter.post("/api/tickets", async (req: Request, res: Response) => {
+ticketsRouter.post("/api/tickets", ...protect("Requester"), async (req: Request, res: Response) => {
   // 1. Shape and content validation, independent of the frontend (BR-19).
   const { input, fieldErrors } = validateCreateTicketBody(req.body);
   if (!input) return validationError(res, fieldErrors);
 
+  const requesterId = req.auth!.user.id;
   const prisma = getPrisma();
 
   try {
     // 2. Reference data must exist AND be active (BR-16, BR-17).
-    const [requester, category, relatedSystem] = await Promise.all([
-      prisma.developmentRequester.findFirst({
-        where: { id: input.requesterId, isActive: true, deletedAt: null },
-        select: { id: true, name: true },
-      }),
+    const [category, relatedSystem] = await Promise.all([
       prisma.category.findFirst({
         where: { id: input.categoryId, isActive: true, deletedAt: null },
         select: { id: true, name: true },
@@ -222,9 +214,6 @@ ticketsRouter.post("/api/tickets", async (req: Request, res: Response) => {
     ]);
 
     const referenceErrors: Record<string, string> = {};
-    if (!requester) {
-      referenceErrors.requesterId = "Selected requester is not available.";
-    }
     if (!category) {
       referenceErrors.categoryId = "Selected category is not available.";
     }
@@ -242,7 +231,7 @@ ticketsRouter.post("/api/tickets", async (req: Request, res: Response) => {
     //    serialises identical submissions and is released on commit/rollback.
     //    Distinct submissions hash differently and never contend.
     const submissionLockKey = advisoryLockKey([
-      input.requesterId,
+      requesterId,
       input.categoryId,
       input.relatedSystemId,
       input.requestedPriority,
@@ -257,7 +246,7 @@ ticketsRouter.post("/api/tickets", async (req: Request, res: Response) => {
 
           const duplicate = await tx.ticket.findFirst({
             where: {
-              requesterId: input.requesterId,
+              requesterId,
               categoryId: input.categoryId,
               relatedSystemId: input.relatedSystemId,
               summary: input.summary,
@@ -286,14 +275,17 @@ ticketsRouter.post("/api/tickets", async (req: Request, res: Response) => {
                 now,
                 nextSequence(latest?.ticketNumber ?? null),
               ),
-              requesterId: input.requesterId,
+              requesterId,
               categoryId: input.categoryId,
               relatedSystemId: input.relatedSystemId,
               summary: input.summary,
               description: input.description,
               requestedPriority: input.requestedPriority,
-              // ticketDate and currentStatus ("New") come from schema
-              // defaults, so the backend owns them (BR-02, BR-03).
+              // Lab 3 BR-37 — IT Priority starts as a copy of Requested
+              // Priority; the enum member names are identical.
+              itPriority: input.requestedPriority,
+              // ticketDate, currentStatus ("New"), and ticketOwnerId (null,
+              // Unassigned) come from schema defaults (BR-02, BR-03, BR-33).
             },
             include: {
               requester: { select: { id: true, name: true } },

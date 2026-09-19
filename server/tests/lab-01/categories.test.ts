@@ -1,7 +1,7 @@
-import { describe, it, expect, afterAll } from "vitest";
-import request from "supertest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { app } from "../../src/app.js";
 import { getPrisma } from "../../src/prisma.js";
+import { loginAgent, type AuthedAgent } from "../authHelper.js";
 
 // Integration test: needs the database migrated and seeded first.
 //   npx prisma migrate dev
@@ -14,13 +14,20 @@ const EXPECTED_NAMES = [
 ];
 
 describe("GET /api/categories", () => {
+  // Lab 3 — every authenticated, gated role may read reference data.
+  let agent: AuthedAgent;
+
+  beforeAll(async () => {
+    agent = await loginAgent(app);
+  });
+
   // Prisma keeps a connection pool open, which stops Node from exiting.
   afterAll(async () => {
     await getPrisma().$disconnect();
   });
 
   it("returns the four seeded categories in id order", async () => {
-    const res = await request(app).get("/api/categories");
+    const res = await agent.get("/api/categories");
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);

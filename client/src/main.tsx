@@ -1,12 +1,11 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import "bootstrap/dist/css/bootstrap.min.css";
-import Lab2App from "./Lab2App.js";
+import App from "./App.js";
 
-// Lab 2 replaces the Lab 1 system-check screen as the application entry point.
-// The Lab 1 component stays in src/App.tsx and keeps its own tests.
+// Lab 3 puts authentication in front of the Lab 2 screens (see App.tsx).
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <Lab2App />
+    <App />
   </React.StrictMode>,
 );

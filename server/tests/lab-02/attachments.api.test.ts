@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
-import request from "supertest";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
+import { loginAgent, type AuthedAgent } from "../authHelper.js";
+import { createTestUser, removeTestUsers } from "../lab-03/helpers.js";
 
 // The upload directory is read at import time, so point it at a throwaway
 // directory before the router loads.
@@ -17,11 +18,12 @@ const { MAX_ACTIVE_ATTACHMENTS, MAX_FILE_SIZE_BYTES, isPermittedFile, generateSt
   await import("../../src/attachmentPolicy.js");
 
 const prisma = getPrisma();
+// Lab 3 BR-03 — ownership comes from the session, not a `:requesterId` path.
+let ownerAgent: AuthedAgent;
+let otherAgent: AuthedAgent;
 
 /** Marks every row this suite creates so cleanup never touches other data. */
 const TAG = "[attachment-test]";
-const OWNER_EMAIL = "attachments-owner@test.invalid";
-const OTHER_EMAIL = "attachments-other@test.invalid";
 
 let ownerId: number;
 let otherId: number;
@@ -33,27 +35,26 @@ const PNG_BYTES = Buffer.from(
   "hex",
 );
 
-/** POST an attachment to the owned ticket. */
+/** POST an attachment to the given ticket, as the owner agent. */
 function uploadTo(
-  requesterId: number,
   ticketId: number,
   options: {
     buffer?: Buffer;
     filename?: string;
     contentType?: string;
+    as?: AuthedAgent;
   } = {},
 ) {
-  return request(app)
-    .post(`/api/requesters/${requesterId}/tickets/${ticketId}/attachments`)
+  return (options.as ?? ownerAgent)
+    .post(`/api/tickets/${ticketId}/attachments`)
     .attach("file", options.buffer ?? PNG_BYTES, {
       filename: options.filename ?? "screenshot.png",
       contentType: options.contentType ?? "image/png",
     });
 }
 
-const detailUrl = (r: number, t: number) => `/api/requesters/${r}/tickets/${t}`;
-const listUrl = (r: number, t: number) => `${detailUrl(r, t)}/attachments`;
-const itemUrl = (r: number, t: number, a: number) => `${listUrl(r, t)}/${a}`;
+const listUrl = (t: number) => `/api/tickets/${t}/attachments`;
+const itemUrl = (t: number, a: number) => `${listUrl(t)}/${a}`;
 
 async function createTicketFor(requesterId: number, summary: string) {
   const [category, system] = await Promise.all([
@@ -70,6 +71,7 @@ async function createTicketFor(requesterId: number, summary: string) {
       summary: `${TAG} ${summary}`,
       description: "Created by the attachments API test suite.",
       requestedPriority: "MEDIUM",
+      itPriority: "MEDIUM",
     },
     select: { id: true },
   });
@@ -82,23 +84,16 @@ async function removeFixtures() {
 
 beforeAll(async () => {
   const [owner, other] = await Promise.all([
-    prisma.developmentRequester.upsert({
-      where: { email: OWNER_EMAIL },
-      update: { isActive: true, deletedAt: null },
-      create: { name: "Attachment Owner", email: OWNER_EMAIL, isActive: true },
-      select: { id: true },
-    }),
-    prisma.developmentRequester.upsert({
-      where: { email: OTHER_EMAIL },
-      update: { isActive: true, deletedAt: null },
-      create: { name: "Attachment Other", email: OTHER_EMAIL, isActive: true },
-      select: { id: true },
-    }),
+    createTestUser({ name: "Attachment Owner" }),
+    createTestUser({ name: "Attachment Other" }),
   ]);
 
   ownerId = owner.id;
   otherId = other.id;
   await removeFixtures();
+
+  ownerAgent = await loginAgent(app, { email: owner.email, password: owner.password });
+  otherAgent = await loginAgent(app, { email: other.email, password: other.password });
 });
 
 beforeEach(async () => {
@@ -113,9 +108,7 @@ afterEach(() => {
 
 afterAll(async () => {
   await removeFixtures();
-  await prisma.developmentRequester.deleteMany({
-    where: { email: { in: [OWNER_EMAIL, OTHER_EMAIL] } },
-  });
+  await removeTestUsers();
   await prisma.$disconnect();
   await fs.rm(TEST_UPLOAD_DIR, { recursive: true, force: true });
 });
@@ -170,7 +163,7 @@ describe("UNIT-04 — attachment validation rules (BR-29–31)", () => {
 // ---------------------------------------------------------------------------
 describe("API-12 / API-13 — attachment upload (AC-18, AC-19)", () => {
   it("stores a permitted attachment and returns its metadata (AC-19)", async () => {
-    const res = await uploadTo(ownerId, ownedTicketId);
+    const res = await uploadTo(ownedTicketId);
 
     expect(res.status).toBe(201);
     expect(res.body.data).toMatchObject({
@@ -186,7 +179,7 @@ describe("API-12 / API-13 — attachment upload (AC-18, AC-19)", () => {
   });
 
   it("writes the bytes to disk under a generated name (BR-33)", async () => {
-    const res = await uploadTo(ownerId, ownedTicketId, { filename: "photo.png" });
+    const res = await uploadTo(ownedTicketId, { filename: "photo.png" });
 
     const stored = await prisma.attachment.findUniqueOrThrow({
       where: { id: res.body.data.id },
@@ -206,17 +199,17 @@ describe("API-12 / API-13 — attachment upload (AC-18, AC-19)", () => {
       ["d.webp", "image/webp"],
       ["e.pdf", "application/pdf"],
     ] as const) {
-      const res = await uploadTo(ownerId, ownedTicketId, { filename, contentType });
+      const res = await uploadTo(ownedTicketId, { filename, contentType });
       expect(res.status).toBe(201);
       // Free the slot for the next type (limit is five).
-      await request(app)
-        .delete(itemUrl(ownerId, ownedTicketId, res.body.data.id))
+      await ownerAgent
+        .delete(itemUrl(ownedTicketId, res.body.data.id))
         .send({ removalReason: "Cycling through types" });
     }
   });
 
   it("rejects an unsupported file type with 415 (BR-29)", async () => {
-    const res = await uploadTo(ownerId, ownedTicketId, {
+    const res = await uploadTo(ownedTicketId, {
       filename: "virus.exe",
       contentType: "application/x-msdownload",
     });
@@ -226,7 +219,7 @@ describe("API-12 / API-13 — attachment upload (AC-18, AC-19)", () => {
   });
 
   it("rejects a disallowed extension declared as an image (BR-29)", async () => {
-    const res = await uploadTo(ownerId, ownedTicketId, {
+    const res = await uploadTo(ownedTicketId, {
       filename: "virus.exe",
       contentType: "image/png",
     });
@@ -234,7 +227,7 @@ describe("API-12 / API-13 — attachment upload (AC-18, AC-19)", () => {
   });
 
   it("rejects a file larger than 5 MB with 413 (BR-30)", async () => {
-    const res = await uploadTo(ownerId, ownedTicketId, {
+    const res = await uploadTo(ownedTicketId, {
       buffer: Buffer.alloc(MAX_FILE_SIZE_BYTES + 1024, 1),
       filename: "huge.png",
     });
@@ -244,7 +237,7 @@ describe("API-12 / API-13 — attachment upload (AC-18, AC-19)", () => {
   });
 
   it("accepts a file at exactly the size limit (BR-30)", async () => {
-    const res = await uploadTo(ownerId, ownedTicketId, {
+    const res = await uploadTo(ownedTicketId, {
       buffer: Buffer.alloc(MAX_FILE_SIZE_BYTES, 1),
       filename: "exact.png",
     });
@@ -254,7 +247,7 @@ describe("API-12 / API-13 — attachment upload (AC-18, AC-19)", () => {
   });
 
   it("rejects a file one byte over the limit (BR-30)", async () => {
-    const res = await uploadTo(ownerId, ownedTicketId, {
+    const res = await uploadTo(ownedTicketId, {
       buffer: Buffer.alloc(MAX_FILE_SIZE_BYTES + 1, 1),
       filename: "one-byte-over.png",
     });
@@ -265,11 +258,11 @@ describe("API-12 / API-13 — attachment upload (AC-18, AC-19)", () => {
 
   it("rejects a sixth active attachment with 409 (BR-31)", async () => {
     for (let i = 0; i < MAX_ACTIVE_ATTACHMENTS; i++) {
-      const ok = await uploadTo(ownerId, ownedTicketId, { filename: `file-${i}.png` });
+      const ok = await uploadTo(ownedTicketId, { filename: `file-${i}.png` });
       expect(ok.status).toBe(201);
     }
 
-    const sixth = await uploadTo(ownerId, ownedTicketId, { filename: "sixth.png" });
+    const sixth = await uploadTo(ownedTicketId, { filename: "sixth.png" });
     expect(sixth.status).toBe(409);
     expect(
       await prisma.attachment.count({ where: { ticketId: ownedTicketId } }),
@@ -279,38 +272,46 @@ describe("API-12 / API-13 — attachment upload (AC-18, AC-19)", () => {
   it("frees a slot when an attachment is soft-removed (BR-31)", async () => {
     const ids: number[] = [];
     for (let i = 0; i < MAX_ACTIVE_ATTACHMENTS; i++) {
-      const ok = await uploadTo(ownerId, ownedTicketId, { filename: `file-${i}.png` });
+      const ok = await uploadTo(ownedTicketId, { filename: `file-${i}.png` });
       ids.push(ok.body.data.id);
     }
-    expect((await uploadTo(ownerId, ownedTicketId, { filename: "sixth.png" })).status).toBe(409);
+    expect((await uploadTo(ownedTicketId, { filename: "sixth.png" })).status).toBe(409);
 
-    await request(app)
-      .delete(itemUrl(ownerId, ownedTicketId, ids[0]))
+    await ownerAgent
+      .delete(itemUrl(ownedTicketId, ids[0]))
       .send({ removalReason: "Making room" });
 
-    const afterRemoval = await uploadTo(ownerId, ownedTicketId, { filename: "sixth.png" });
+    const afterRemoval = await uploadTo(ownedTicketId, { filename: "sixth.png" });
     expect(afterRemoval.status).toBe(201);
   });
 
-  it("rejects an upload to another requester's ticket with 403 (AC-22)", async () => {
-    const res = await uploadTo(ownerId, foreignTicketId);
+  it("rejects an upload to another requester's ticket as 404, without leaking (AC-22, BR-09)", async () => {
+    const res = await uploadTo(foreignTicketId);
 
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
     expect(await prisma.attachment.count({ where: { ticketId: foreignTicketId } })).toBe(0);
   });
 
   it("returns 404 when the ticket does not exist", async () => {
-    const res = await uploadTo(ownerId, 99999999);
+    const res = await uploadTo(99999999);
     expect(res.status).toBe(404);
   });
 
+  it("rejects an upload from IT Staff or Administrators (BR-25)", async () => {
+    const staff = await createTestUser({ role: "ITStaff" });
+    const staffAgent = await loginAgent(app, { email: staff.email, password: staff.password });
+
+    const res = await uploadTo(ownedTicketId, { as: staffAgent });
+    expect(res.status).toBe(403);
+  });
+
   it("rejects a request with no file", async () => {
-    const res = await request(app).post(listUrl(ownerId, ownedTicketId));
+    const res = await ownerAgent.post(listUrl(ownedTicketId));
     expect(res.status).toBe(400);
   });
 
   it("stores a sanitised display filename (BR-33)", async () => {
-    const res = await uploadTo(ownerId, ownedTicketId, {
+    const res = await uploadTo(ownedTicketId, {
       filename: "../../evil.png",
     });
 
@@ -324,10 +325,10 @@ describe("API-12 / API-13 — attachment upload (AC-18, AC-19)", () => {
 // ---------------------------------------------------------------------------
 describe("API-14 — attachment metadata after soft removal (AC-20)", () => {
   it("lists metadata for an owned ticket", async () => {
-    await uploadTo(ownerId, ownedTicketId, { filename: "one.png" });
-    await uploadTo(ownerId, ownedTicketId, { filename: "two.pdf", contentType: "application/pdf" });
+    await uploadTo(ownedTicketId, { filename: "one.png" });
+    await uploadTo(ownedTicketId, { filename: "two.pdf", contentType: "application/pdf" });
 
-    const res = await request(app).get(listUrl(ownerId, ownedTicketId));
+    const res = await ownerAgent.get(listUrl(ownedTicketId));
 
     expect(res.status).toBe(200);
     expect(res.body.data).toHaveLength(2);
@@ -345,21 +346,21 @@ describe("API-14 — attachment metadata after soft removal (AC-20)", () => {
   });
 
   it("keeps removed attachments in the metadata response (BR-38)", async () => {
-    const uploaded = await uploadTo(ownerId, ownedTicketId);
-    await request(app)
-      .delete(itemUrl(ownerId, ownedTicketId, uploaded.body.data.id))
+    const uploaded = await uploadTo(ownedTicketId);
+    await ownerAgent
+      .delete(itemUrl(ownedTicketId, uploaded.body.data.id))
       .send({ removalReason: "No longer needed" });
 
-    const res = await request(app).get(listUrl(ownerId, ownedTicketId));
+    const res = await ownerAgent.get(listUrl(ownedTicketId));
 
     expect(res.body.data).toHaveLength(1);
     expect(res.body.data[0].removedAt).not.toBeNull();
     expect(res.body.data[0].removalReason).toBe("No longer needed");
   });
 
-  it("rejects metadata access for another requester's ticket (AC-22)", async () => {
-    const res = await request(app).get(listUrl(ownerId, foreignTicketId));
-    expect(res.status).toBe(403);
+  it("rejects metadata access for another requester's ticket with 404 (AC-22)", async () => {
+    const res = await ownerAgent.get(listUrl(foreignTicketId));
+    expect(res.status).toBe(404);
   });
 });
 
@@ -368,10 +369,10 @@ describe("API-14 — attachment metadata after soft removal (AC-20)", () => {
 // ---------------------------------------------------------------------------
 describe("API-15 / API-16 — download protection and ownership (AC-21, AC-22)", () => {
   it("returns the file with its stored MIME type", async () => {
-    const uploaded = await uploadTo(ownerId, ownedTicketId);
+    const uploaded = await uploadTo(ownedTicketId);
 
-    const res = await request(app)
-      .get(itemUrl(ownerId, ownedTicketId, uploaded.body.data.id))
+    const res = await ownerAgent
+      .get(itemUrl(ownedTicketId, uploaded.body.data.id))
       .buffer(true)
       .parse((r, cb) => {
         const chunks: Buffer[] = [];
@@ -386,13 +387,13 @@ describe("API-15 / API-16 — download protection and ownership (AC-21, AC-22)",
   });
 
   it("refuses to download a removed attachment with 410 (AC-21)", async () => {
-    const uploaded = await uploadTo(ownerId, ownedTicketId);
-    await request(app)
-      .delete(itemUrl(ownerId, ownedTicketId, uploaded.body.data.id))
+    const uploaded = await uploadTo(ownedTicketId);
+    await ownerAgent
+      .delete(itemUrl(ownedTicketId, uploaded.body.data.id))
       .send({ removalReason: "Duplicate screenshot" });
 
-    const res = await request(app).get(
-      itemUrl(ownerId, ownedTicketId, uploaded.body.data.id),
+    const res = await ownerAgent.get(
+      itemUrl(ownedTicketId, uploaded.body.data.id),
     );
 
     expect(res.status).toBe(410);
@@ -401,23 +402,23 @@ describe("API-15 / API-16 — download protection and ownership (AC-21, AC-22)",
     expect(res.body.error.code).toBe("ATTACHMENT_REMOVED");
   });
 
-  it("rejects a download from another requester with 403 (AC-22)", async () => {
-    const uploaded = await uploadTo(ownerId, ownedTicketId);
+  it("rejects a download from another requester with 404 (AC-22, BR-09)", async () => {
+    const uploaded = await uploadTo(ownedTicketId);
 
-    const res = await request(app).get(
-      itemUrl(otherId, ownedTicketId, uploaded.body.data.id),
+    const res = await otherAgent.get(
+      itemUrl(ownedTicketId, uploaded.body.data.id),
     );
 
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
     expect(res.headers["content-type"]).toContain("application/json");
   });
 
   it("returns 404 for an attachment that belongs to a different ticket", async () => {
-    const uploaded = await uploadTo(ownerId, ownedTicketId);
+    const uploaded = await uploadTo(ownedTicketId);
     const secondTicket = await createTicketFor(ownerId, "Second owned ticket");
 
-    const res = await request(app).get(
-      itemUrl(ownerId, secondTicket, uploaded.body.data.id),
+    const res = await ownerAgent.get(
+      itemUrl(secondTicket, uploaded.body.data.id),
     );
 
     expect(res.status).toBe(404);
@@ -425,15 +426,15 @@ describe("API-15 / API-16 — download protection and ownership (AC-21, AC-22)",
 
   it("returns 404 when the stored file is missing", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
-    const uploaded = await uploadTo(ownerId, ownedTicketId);
+    const uploaded = await uploadTo(ownedTicketId);
     const stored = await prisma.attachment.findUniqueOrThrow({
       where: { id: uploaded.body.data.id },
       select: { storageKey: true },
     });
     await fs.unlink(path.join(TEST_UPLOAD_DIR, stored.storageKey));
 
-    const res = await request(app).get(
-      itemUrl(ownerId, ownedTicketId, uploaded.body.data.id),
+    const res = await ownerAgent.get(
+      itemUrl(ownedTicketId, uploaded.body.data.id),
     );
 
     expect(res.status).toBe(404);
@@ -447,10 +448,10 @@ describe("API-15 / API-16 — download protection and ownership (AC-21, AC-22)",
 // ---------------------------------------------------------------------------
 describe("API-14 — soft removal (AC-20)", () => {
   it("sets the removal state and keeps the metadata row (AC-20, BR-36)", async () => {
-    const uploaded = await uploadTo(ownerId, ownedTicketId);
+    const uploaded = await uploadTo(ownedTicketId);
 
-    const res = await request(app)
-      .delete(itemUrl(ownerId, ownedTicketId, uploaded.body.data.id))
+    const res = await ownerAgent
+      .delete(itemUrl(ownedTicketId, uploaded.body.data.id))
       .send({ removalReason: "Duplicate screenshot" });
 
     expect(res.status).toBe(200);
@@ -470,11 +471,11 @@ describe("API-14 — soft removal (AC-20)", () => {
   });
 
   it("requires a removal reason (BR-35)", async () => {
-    const uploaded = await uploadTo(ownerId, ownedTicketId);
+    const uploaded = await uploadTo(ownedTicketId);
 
     for (const body of [{}, { removalReason: "" }, { removalReason: "   " }]) {
-      const res = await request(app)
-        .delete(itemUrl(ownerId, ownedTicketId, uploaded.body.data.id))
+      const res = await ownerAgent
+        .delete(itemUrl(ownedTicketId, uploaded.body.data.id))
         .send(body);
 
       expect(res.status).toBe(400);
@@ -489,23 +490,23 @@ describe("API-14 — soft removal (AC-20)", () => {
   });
 
   it("trims the removal reason", async () => {
-    const uploaded = await uploadTo(ownerId, ownedTicketId);
+    const uploaded = await uploadTo(ownedTicketId);
 
-    const res = await request(app)
-      .delete(itemUrl(ownerId, ownedTicketId, uploaded.body.data.id))
+    const res = await ownerAgent
+      .delete(itemUrl(ownedTicketId, uploaded.body.data.id))
       .send({ removalReason: "   Duplicate   " });
 
     expect(res.body.data.removalReason).toBe("Duplicate");
   });
 
-  it("rejects removal by another requester with 403 (AC-22)", async () => {
-    const uploaded = await uploadTo(ownerId, ownedTicketId);
+  it("rejects removal by another requester with 404 (AC-22, BR-09)", async () => {
+    const uploaded = await uploadTo(ownedTicketId);
 
-    const res = await request(app)
-      .delete(itemUrl(otherId, ownedTicketId, uploaded.body.data.id))
+    const res = await otherAgent
+      .delete(itemUrl(ownedTicketId, uploaded.body.data.id))
       .send({ removalReason: "Not mine to remove" });
 
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(404);
     const stored = await prisma.attachment.findUniqueOrThrow({
       where: { id: uploaded.body.data.id },
     });
@@ -513,19 +514,19 @@ describe("API-14 — soft removal (AC-20)", () => {
   });
 
   it("returns 404 for an attachment that does not exist", async () => {
-    const res = await request(app)
-      .delete(itemUrl(ownerId, ownedTicketId, 99999999))
+    const res = await ownerAgent
+      .delete(itemUrl(ownedTicketId, 99999999))
       .send({ removalReason: "Does not exist" });
 
     expect(res.status).toBe(404);
   });
 
   it("returns 409 when the attachment is already removed", async () => {
-    const uploaded = await uploadTo(ownerId, ownedTicketId);
-    const url = itemUrl(ownerId, ownedTicketId, uploaded.body.data.id);
+    const uploaded = await uploadTo(ownedTicketId);
+    const url = itemUrl(ownedTicketId, uploaded.body.data.id);
 
-    await request(app).delete(url).send({ removalReason: "First removal" });
-    const second = await request(app)
+    await ownerAgent.delete(url).send({ removalReason: "First removal" });
+    const second = await ownerAgent
       .delete(url)
       .send({ removalReason: "Second removal" });
 
@@ -548,7 +549,7 @@ describe("API-12–16 — attachment failures stay safe (AC-23)", () => {
       new Error('Invalid `prisma.attachment.findMany()` at C:\\repo\\server\\src\\attachments.ts:180'),
     );
 
-    const res = await request(app).get(listUrl(ownerId, ownedTicketId));
+    const res = await ownerAgent.get(listUrl(ownedTicketId));
 
     expect(res.status).toBe(500);
     const serialized = JSON.stringify(res.body);
@@ -565,7 +566,7 @@ describe("API-12–16 — attachment failures stay safe (AC-23)", () => {
       new Error("write failed"),
     );
 
-    const res = await uploadTo(ownerId, ownedTicketId);
+    const res = await uploadTo(ownedTicketId);
 
     expect(res.status).toBe(500);
     // The bytes written before the failure are cleaned up.

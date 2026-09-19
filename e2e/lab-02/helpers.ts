@@ -46,29 +46,75 @@ export async function captureScreen(
   });
 }
 
+/** The seeded Requester accounts (server/prisma/seedData.ts), by display name. */
+const REQUESTER_EMAILS: Record<string, string> = {
+  "Requester A": "requester-a@example.com",
+  "Requester B": "requester-b@example.com",
+  "Requester C": "requester-c@example.com",
+  "Requester E": "requester-e@example.com",
+};
+
 /**
- * Chooses the option whose text contains `name`. The visible label is
- * "<name> — <department>", so an exact-label match would not find it.
+ * Lab 3 puts a login in front of the Lab 2 screens. The seeded development
+ * account used to reach them (server/prisma/seedData.ts); the seed runs in
+ * global setup, so this password is always current.
  */
-export async function chooseRequesterOption(page: Page, name: string) {
-  const select = page.getByLabel(/development requester/i);
-  await expect(select).toBeVisible();
+export const E2E_LOGIN = {
+  email: "requester-a@example.com",
+  password: "TokTickIT-Dev1!",
+};
 
-  const value = await select
-    .locator("option", { hasText: name })
-    .first()
-    .getAttribute("value");
-  expect(value, `no requester option matching "${name}"`).toBeTruthy();
-
-  await select.selectOption(value!);
-  await page.getByRole("button", { name: /continue/i }).click();
-  await expect(page.getByTestId("current-requester")).toContainText(name);
+/**
+ * Opens the app, signing in first when the Login screen appears. A browser
+ * context keeps its session cookie, so later calls go straight to the app.
+ */
+export async function openApp(page: Page) {
+  await signInAs(page, E2E_LOGIN.email);
 }
 
-/** Opens the app and selects a Development Requester. */
-export async function selectRequester(page: Page, name: string) {
+/**
+ * Opens the app signed in as `email`. A different signed-in user is logged out
+ * first, so the call always ends on that account's home screen.
+ */
+async function signInAs(page: Page, email: string, expectedName?: string) {
   await page.goto("/");
-  await chooseRequesterOption(page, name);
+
+  const signIn = page.getByRole("button", { name: /^sign in$/i });
+  const shell = page.getByTestId("signed-in-user");
+  await expect(signIn.or(shell).first()).toBeVisible();
+
+  if (expectedName && (await shell.isVisible()) && (await shell.textContent()) !== expectedName) {
+    await page.getByRole("button", { name: /profile menu/i }).click();
+    await page.getByRole("button", { name: /^log out$/i }).click();
+    await expect(signIn).toBeVisible();
+  }
+
+  if (await signIn.isVisible()) {
+    await page.getByLabel(/^email/i).fill(email);
+    await page.getByLabel(/^password/i).fill(E2E_LOGIN.password);
+    // Submit with the keyboard, not a click: a mouse click would switch the
+    // browser's :focus-visible heuristic off for keyboard checks that follow.
+    await page.getByLabel(/^password/i).press("Enter");
+    await expect(page.getByTestId("signed-in-user")).toBeVisible();
+  }
+  if (expectedName) await expect(shell).toHaveText(expectedName);
+}
+
+/**
+ * Lab 3 replaced the Development Requester selector with a real login
+ * (FR-19). "Selecting" a requester now means signing in as that account.
+ */
+export async function selectRequester(page: Page, name: string) {
+  const email = REQUESTER_EMAILS[name];
+  expect(email, `no seeded account for "${name}"`).toBeTruthy();
+  await signInAs(page, email, name);
+}
+
+/** Signs the current user out through the profile menu. */
+export async function signOut(page: Page) {
+  await page.getByRole("button", { name: /profile menu/i }).click();
+  await page.getByRole("button", { name: /^log out$/i }).click();
+  await expect(page.getByRole("button", { name: /^sign in$/i })).toBeVisible();
 }
 
 /** Navigates to Create Ticket through the shell nav. */

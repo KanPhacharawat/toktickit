@@ -78,5 +78,5 @@ Repository: https://github.com/KanPhacharawat/toktickit
 
 - Pull requests authored for Lab 2: **9 merged into `lab2-staging`**, plus the
   final review PR and the release PR to `main`.
-- Blocking issues raised by the reviewer: _<count>_
-- Blocking issues resolved before merge: _<count>_
+- Blocking issues raised by the reviewer: _0_
+- Blocking issues resolved before merge: _0_

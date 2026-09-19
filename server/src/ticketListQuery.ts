@@ -5,13 +5,15 @@ import { REQUESTED_PRIORITIES, type RequestedPriority } from "./ticketValidation
 // BR-26 — invalid page or page-size values are rejected with a safe
 // validation response rather than silently producing unpredictable results.
 
-/** Matches the TicketStatus enum in schema.prisma. */
+/** Matches the TicketStatus enum in schema.prisma (Lab 3 §7.1). */
 export const TICKET_STATUSES = [
   "New",
+  "Open",
   "InProgress",
-  "OnHold",
+  "WaitingForRequester",
   "Resolved",
   "Closed",
+  "Reopened",
   "Cancelled",
 ] as const;
 export type TicketStatus = (typeof TICKET_STATUSES)[number];

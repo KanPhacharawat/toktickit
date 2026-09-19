@@ -12,7 +12,6 @@ import {
 // "Upload, removed state, confirmation, and blocked download are shown
 // correctly."
 
-const REQUESTER_ID = 11;
 const TICKET_ID = 101;
 
 function attachment(
@@ -43,7 +42,6 @@ function renderSection(
 ) {
   render(
     <AttachmentSection
-      requesterId={REQUESTER_ID}
       ticketId={TICKET_ID}
       attachments={attachments}
       onChanged={onChanged}
@@ -82,8 +80,7 @@ describe("UI-11 — Attachment UI (AC-19, AC-20, AC-21)", () => {
     );
 
     await waitFor(() => expect(uploadSpy).toHaveBeenCalledTimes(1));
-    expect(uploadSpy.mock.calls[0][0]).toBe(REQUESTER_ID);
-    expect(uploadSpy.mock.calls[0][1]).toBe(TICKET_ID);
+    expect(uploadSpy.mock.calls[0][0]).toBe(TICKET_ID);
     // The parent is told to refresh so the new metadata appears.
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
   });
@@ -106,9 +103,7 @@ describe("UI-11 — Attachment UI (AC-19, AC-20, AC-21)", () => {
     const link = screen.getByRole("link", { name: /download screenshot\.png/i });
     expect(link).toHaveAttribute(
       "href",
-      expect.stringContaining(
-        `/api/requesters/${REQUESTER_ID}/tickets/${TICKET_ID}/attachments/501`,
-      ),
+      expect.stringContaining(`/api/tickets/${TICKET_ID}/attachments/501`),
     );
   });
 
@@ -301,12 +296,7 @@ describe("UI-11 — Attachment UI (AC-19, AC-20, AC-21)", () => {
     await user.click(screen.getByRole("button", { name: /confirm removal/i }));
 
     await waitFor(() =>
-      expect(removeSpy).toHaveBeenCalledWith(
-        REQUESTER_ID,
-        TICKET_ID,
-        501,
-        "Duplicate screenshot",
-      ),
+      expect(removeSpy).toHaveBeenCalledWith(TICKET_ID, 501, "Duplicate screenshot"),
     );
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
   });

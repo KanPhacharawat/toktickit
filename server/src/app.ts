@@ -1,17 +1,60 @@
-import express, { Request, Response } from "express";
+import express, { NextFunction, Request, Response } from "express";
 import cors from "cors";
 import { getPrisma } from "./prisma.js";
 import { ticketsRouter } from "./tickets.js";
 import { attachmentsRouter } from "./attachments.js";
+import { commentsRouter } from "./comments.js";
+import { queueRouter } from "./queue.js";
+import { staffOperationsRouter } from "./staffOperations.js";
+import { adminUsersRouter } from "./adminUsers.js";
+import { authRouter } from "./auth/routes.js";
+import { bcryptCost } from "./auth/credentials.js";
+import { protect } from "./auth/middleware.js";
 // getPrisma() is your lazy database handle. Call it INSIDE a route when you
 // need the DB (Issue 4). It is intentionally unused until then.
+
+// Lab 3 BR-12 — refuse to start with a weakened bcrypt cost.
+bcryptCost();
 
 // The Express app is exported separately from app.listen() (see index.ts) so
 // Supertest can import `app` without opening a port. Do not merge these files.
 export const app = express();
 
-app.use(cors()); // already wired: lets the Vite dev server call this API
+// Lab 3 BR-17 / api-spec §1.3 — the session cookie only travels with
+// credentialed requests, and only this one origin is ever allowed. A custom
+// origin function (rather than a static string) means a foreign Origin gets
+// no Access-Control-Allow-Origin header at all, instead of a mismatched one:
+// `*` is never returned either way.
+export const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN ?? "http://localhost:5173";
+app.use(
+  cors({
+    origin(origin, callback) {
+      // No Origin header at all (server-to-server calls, curl, same-origin
+      // requests) is not a cross-origin browser request, so it is allowed.
+      if (!origin || origin === CLIENT_ORIGIN) return callback(null, true);
+      return callback(null, false);
+    },
+    credentials: true,
+  }),
+);
 app.use(express.json());
+
+// A malformed JSON body gets the documented envelope instead of Express's
+// default HTML error page (api-spec.md §1.1).
+app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
+  if ((err as { type?: string }).type === "entity.parse.failed") {
+    return res.status(400).json({
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "The request body is not valid JSON.",
+      },
+    });
+  }
+  return next(err);
+});
+
+// Lab 3 — login, logout, current user, change password.
+app.use(authRouter);
 
 // ---------------------------------------------------------------------------
 // Issue 2 — API health check
@@ -33,8 +76,12 @@ app.get("/api/health", (_req: Request, res: Response) => {
 //   -> return each { id, name } in a predictable (id) order
 //   -> on failure, respond 500 with a safe message (no internal details)
 // TODO(Issue 4): implement the route here.
+//
+// Lab 3 — any authenticated, gated role may read reference data (matrix §5.1
+// "Categories, Related Systems": Yes for every role), so `protect()` takes no
+// role argument.
 // ---------------------------------------------------------------------------
-app.get("/api/categories", async (_req: Request, res: Response) => {
+app.get("/api/categories", ...protect(), async (_req: Request, res: Response) => {
   try {
     const categories = await getPrisma().category.findMany({
       // FR-30 — only active Categories are selectable on Create Ticket.
@@ -52,35 +99,27 @@ app.get("/api/categories", async (_req: Request, res: Response) => {
 });
 
 // ---------------------------------------------------------------------------
-// Lab 2 — Development Requester selection
-// GET /api/development-requesters
-//   -> FR-32/BR-05: active Development Requesters only.
-//   -> The selected Requester is the Lab 2 testing identity (BR-04). It is
-//      NOT authentication; Lab 3 replaces it with a real signed-in user.
+// Lab 3 FR-19 / AC-19 — the Development Requester selector and its API are
+// fully removed. GET /api/development-requesters now falls through to the
+// unmatched-route 404 below, exactly like any other unknown /api route.
 // ---------------------------------------------------------------------------
-app.get("/api/development-requesters", async (_req: Request, res: Response) => {
-  try {
-    const requesters = await getPrisma().developmentRequester.findMany({
-      // Inactive and soft-removed Requesters never reach the selector (AC-03).
-      where: { isActive: true, deletedAt: null },
-      select: { id: true, name: true, email: true, department: true },
-      orderBy: { id: "asc" },
-    });
-    res.status(200).json({ data: requesters });
-  } catch (err) {
-    console.error("GET /api/development-requesters failed:", err);
-    // BR-39 — safe message only, no internal details.
-    res.status(500).json({
-      error: {
-        code: "INTERNAL_ERROR",
-        message: "Failed to load development requesters.",
-      },
-    });
-  }
-});
 
-// Lab 2 — Create Ticket and its reference data.
 app.use(ticketsRouter);
+// Lab 3 — queueRouter's literal "/api/tickets/queue" must be registered
+// before attachmentsRouter's "/api/tickets/:ticketId", or Express would try
+// to treat "queue" as a ticket id and never reach this route.
+app.use(queueRouter);
+app.use(staffOperationsRouter);
 app.use(attachmentsRouter);
+app.use(commentsRouter);
+app.use(adminUsersRouter);
+
+// api-spec.md §1.1 — any unmatched /api route, including a removed Lab 2
+// one, answers the documented envelope instead of Express's default HTML.
+app.use("/api", (_req: Request, res: Response) => {
+  res.status(404).json({
+    error: { code: "NOT_FOUND", message: "Resource not found." },
+  });
+});
 
 export default app;

@@ -12,6 +12,10 @@ import {
   safeDisplayFilename,
   validateRemovalReason,
 } from "./attachmentPolicy.js";
+import { protect } from "./auth/middleware.js";
+import { fail, internalError, parseId, resolveTicketAccess } from "./ticketAccess.js";
+import { isTerminal } from "./statusTransitions.js";
+import { loadStaffTicketDetail } from "./ticketDetailView.js";
 
 export const attachmentsRouter = Router();
 
@@ -31,29 +35,6 @@ const upload = multer({
   // The cap still stops an unbounded body from being buffered.
   limits: { fileSize: MAX_FILE_SIZE_BYTES + 1, files: 1 },
 });
-
-// --- response helpers -------------------------------------------------------
-
-function fail(
-  res: Response,
-  status: number,
-  code: string,
-  message: string,
-  extra: Record<string, unknown> = {},
-) {
-  return res.status(status).json({ error: { code, message, ...extra } });
-}
-
-/** BR-39 — safe message only; never a stack trace, SQL, or a filesystem path. */
-function internalError(res: Response, message: string) {
-  return fail(res, 500, "INTERNAL_ERROR", message);
-}
-
-function parseId(value: string | undefined): number | null {
-  if (value === undefined || !/^\d+$/.test(value)) return null;
-  const parsed = Number.parseInt(value, 10);
-  return parsed > 0 ? parsed : null;
-}
 
 /** The Attachment metadata shape from api-spec.md §9. */
 interface AttachmentRecord {
@@ -78,67 +59,26 @@ function toAttachmentMetadata(attachment: AttachmentRecord) {
   };
 }
 
-type OwnershipFailure = { ok: false };
-type OwnershipSuccess = { ok: true; ticketId: number };
-
-/**
- * BR-10 — every attachment operation requires the parent Ticket to belong to
- * the selected Requester. Resolves ownership once and answers 404/403 itself.
- *
- * BR-09 — a Ticket owned by someone else returns 403 with nothing about the
- * real owner.
- */
-async function requireOwnedTicket(
-  req: Request,
-  res: Response,
-): Promise<OwnershipFailure | OwnershipSuccess> {
-  const requesterId = parseId(req.params.requesterId);
-  const ticketId = parseId(req.params.ticketId);
-
-  if (requesterId === null || ticketId === null) {
-    fail(res, 400, "VALIDATION_ERROR", "The request contains invalid data.", {
-      fieldErrors: {
-        ...(requesterId === null
-          ? { requesterId: "A valid requester is required." }
-          : {}),
-        ...(ticketId === null ? { ticketId: "A valid ticket is required." } : {}),
-      },
-    });
-    return { ok: false };
-  }
-
-  const ticket = await getPrisma().ticket.findFirst({
-    where: { id: ticketId, deletedAt: null },
-    select: { id: true, requesterId: true },
-  });
-
-  if (!ticket) {
-    fail(res, 404, "NOT_FOUND", "Ticket not found.");
-    return { ok: false };
-  }
-
-  if (ticket.requesterId !== requesterId) {
-    fail(res, 403, "FORBIDDEN", "You do not have access to this ticket.");
-    return { ok: false };
-  }
-
-  return { ok: true, ticketId: ticket.id };
-}
-
 // ---------------------------------------------------------------------------
-// GET /api/requesters/:requesterId/tickets/:ticketId — Ticket Detail (§8)
+// GET /api/tickets/:ticketId — Ticket Detail (api-spec.md §8.1, §3.5, §3.6).
+//
+// Requester (own): RequesterTicketDetail. IT Staff / Administrator (any):
+// StaffTicketDetail, with itPriority, ticketOwner, allowedStatusTransitions,
+// and the staff permissions object.
 // ---------------------------------------------------------------------------
 attachmentsRouter.get(
-  "/api/requesters/:requesterId/tickets/:ticketId",
+  "/api/tickets/:ticketId",
+  ...protect("Requester", "ITStaff", "Administrator"),
   async (req: Request, res: Response) => {
     try {
-      const owned = await requireOwnedTicket(req, res);
-      if (!owned.ok) return;
+      const access = await resolveTicketAccess(req, res);
+      if (!access.ok) return;
 
       const ticket = await getPrisma().ticket.findUniqueOrThrow({
-        where: { id: owned.ticketId },
+        where: { id: access.ticketId },
         include: {
           requester: { select: { id: true, name: true, email: true } },
+          ticketOwner: { select: { id: true, name: true, role: true } },
           category: { select: { id: true, name: true } },
           relatedSystem: { select: { id: true, name: true } },
           // BR-38 — removed attachments stay visible as metadata.
@@ -146,22 +86,49 @@ attachmentsRouter.get(
         },
       });
 
+      const terminal = isTerminal(ticket.currentStatus);
+      const shared = {
+        id: ticket.id,
+        ticketNumber: ticket.ticketNumber,
+        ticketDate: ticket.ticketDate,
+        requester: ticket.requester,
+        category: ticket.category,
+        relatedSystem: ticket.relatedSystem,
+        summary: ticket.summary,
+        requestedPriority: ticket.requestedPriority,
+        currentStatus: ticket.currentStatus,
+        description: ticket.description,
+        problemAppearsResolvedAt: ticket.problemAppearsResolvedAt,
+        createdAt: ticket.createdAt,
+        updatedAt: ticket.updatedAt,
+        attachments: ticket.attachments.map(toAttachmentMetadata),
+      };
+
+      if (req.auth!.user.role === "Requester") {
+        // BR-48 — eligible statuses for the resolution signal.
+        const canReportProblemResolved =
+          !terminal &&
+          ticket.problemAppearsResolvedAt === null &&
+          ["New", "Open", "InProgress", "WaitingForRequester", "Reopened"].includes(
+            ticket.currentStatus,
+          );
+
+        return res.status(200).json({
+          data: {
+            ...shared,
+            ticketOwner: ticket.ticketOwner ? { name: ticket.ticketOwner.name } : null,
+            permissions: {
+              canManageAttachments: !terminal,
+              canAddPublicComment: !terminal,
+              canReportProblemResolved,
+            },
+          },
+        });
+      }
+
+      // Staff view (IT Staff or Administrator).
       return res.status(200).json({
-        data: {
-          id: ticket.id,
-          ticketNumber: ticket.ticketNumber,
-          ticketDate: ticket.ticketDate,
-          requester: ticket.requester,
-          category: ticket.category,
-          relatedSystem: ticket.relatedSystem,
-          summary: ticket.summary,
-          requestedPriority: ticket.requestedPriority,
-          currentStatus: ticket.currentStatus,
-          description: ticket.description,
-          createdAt: ticket.createdAt,
-          updatedAt: ticket.updatedAt,
-          attachments: ticket.attachments.map(toAttachmentMetadata),
-        },
+        data: await loadStaffTicketDetail(access.ticketId, req.auth!.user),
       });
     } catch (err) {
       console.error("GET ticket detail failed:", err);
@@ -171,17 +138,19 @@ attachmentsRouter.get(
 );
 
 // ---------------------------------------------------------------------------
-// GET .../attachments — Attachment metadata (§10)
+// GET .../attachments — Attachment metadata (§10). Requester (own), IT
+// Staff, Administrator (any).
 // ---------------------------------------------------------------------------
 attachmentsRouter.get(
-  "/api/requesters/:requesterId/tickets/:ticketId/attachments",
+  "/api/tickets/:ticketId/attachments",
+  ...protect("Requester", "ITStaff", "Administrator"),
   async (req: Request, res: Response) => {
     try {
-      const owned = await requireOwnedTicket(req, res);
-      if (!owned.ok) return;
+      const access = await resolveTicketAccess(req, res);
+      if (!access.ok) return;
 
       const attachments = await getPrisma().attachment.findMany({
-        where: { ticketId: owned.ticketId },
+        where: { ticketId: access.ticketId },
         orderBy: { id: "asc" },
       });
 
@@ -196,10 +165,13 @@ attachmentsRouter.get(
 );
 
 // ---------------------------------------------------------------------------
-// POST .../attachments — upload one Attachment (§9)
+// POST .../attachments — upload one Attachment (§9). Requester (own) only
+// (matrix §5.1 "Attachment upload, soft removal": Own for Requester, No for
+// IT Staff/Administrator).
 // ---------------------------------------------------------------------------
 attachmentsRouter.post(
-  "/api/requesters/:requesterId/tickets/:ticketId/attachments",
+  "/api/tickets/:ticketId/attachments",
+  ...protect("Requester"),
   (req: Request, res: Response) => {
     upload.single("file")(req, res, async (uploadErr: unknown) => {
       // BR-30 — multer aborts the stream once the limit is passed.
@@ -220,8 +192,8 @@ attachmentsRouter.post(
       }
 
       try {
-        const owned = await requireOwnedTicket(req, res);
-        if (!owned.ok) return;
+        const access = await resolveTicketAccess(req, res);
+        if (!access.ok) return;
 
         const file = req.file;
         if (!file) {
@@ -261,7 +233,7 @@ attachmentsRouter.post(
         // BR-31 — only active attachments count towards the limit, so removing
         // one frees a slot.
         const activeCount = await getPrisma().attachment.count({
-          where: { ticketId: owned.ticketId, removedAt: null },
+          where: { ticketId: access.ticketId, removedAt: null },
         });
         if (activeCount >= MAX_ACTIVE_ATTACHMENTS) {
           return fail(
@@ -280,7 +252,7 @@ attachmentsRouter.post(
         try {
           const attachment = await getPrisma().attachment.create({
             data: {
-              ticketId: owned.ticketId,
+              ticketId: access.ticketId,
               originalFilename: safeDisplayFilename(file.originalname),
               storageKey,
               mimeType: file.mimetype,
@@ -310,14 +282,16 @@ attachmentsRouter.post(
 );
 
 // ---------------------------------------------------------------------------
-// GET .../attachments/:attachmentId — download an active Attachment (§11)
+// GET .../attachments/:attachmentId — download an active Attachment (§11).
+// Requester (own), IT Staff, Administrator (any).
 // ---------------------------------------------------------------------------
 attachmentsRouter.get(
-  "/api/requesters/:requesterId/tickets/:ticketId/attachments/:attachmentId",
+  "/api/tickets/:ticketId/attachments/:attachmentId",
+  ...protect("Requester", "ITStaff", "Administrator"),
   async (req: Request, res: Response) => {
     try {
-      const owned = await requireOwnedTicket(req, res);
-      if (!owned.ok) return;
+      const access = await resolveTicketAccess(req, res);
+      if (!access.ok) return;
 
       const attachmentId = parseId(req.params.attachmentId);
       if (attachmentId === null) {
@@ -325,7 +299,7 @@ attachmentsRouter.get(
       }
 
       const attachment = await getPrisma().attachment.findFirst({
-        where: { id: attachmentId, ticketId: owned.ticketId },
+        where: { id: attachmentId, ticketId: access.ticketId },
       });
 
       if (!attachment) {
@@ -383,14 +357,16 @@ attachmentsRouter.get(
 );
 
 // ---------------------------------------------------------------------------
-// DELETE .../attachments/:attachmentId — soft removal (§12)
+// DELETE .../attachments/:attachmentId — soft removal (§12). Requester (own)
+// only.
 // ---------------------------------------------------------------------------
 attachmentsRouter.delete(
-  "/api/requesters/:requesterId/tickets/:ticketId/attachments/:attachmentId",
+  "/api/tickets/:ticketId/attachments/:attachmentId",
+  ...protect("Requester"),
   async (req: Request, res: Response) => {
     try {
-      const owned = await requireOwnedTicket(req, res);
-      if (!owned.ok) return;
+      const access = await resolveTicketAccess(req, res);
+      if (!access.ok) return;
 
       const attachmentId = parseId(req.params.attachmentId);
       if (attachmentId === null) {
@@ -398,7 +374,7 @@ attachmentsRouter.delete(
       }
 
       const attachment = await getPrisma().attachment.findFirst({
-        where: { id: attachmentId, ticketId: owned.ticketId },
+        where: { id: attachmentId, ticketId: access.ticketId },
         select: { id: true, removedAt: true },
       });
 

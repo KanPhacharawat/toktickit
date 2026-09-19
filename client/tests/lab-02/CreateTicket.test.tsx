@@ -1,17 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Lab2App from "../../src/Lab2App.js";
 import * as api from "../../src/api.js";
+import { renderAsRequester, REQUESTER } from "./testAuth.js";
 import {
   MAX_FILE_SIZE_BYTES,
   MAX_ACTIVE_ATTACHMENTS,
   selectAttachments,
 } from "../../src/attachmentRules.js";
-
-const REQUESTERS: api.DevelopmentRequester[] = [
-  { id: 11, name: "Alpha Requester", email: "alpha@example.com", department: "Finance" },
-];
 
 // Deliberately not the seeded reference data: hard-coded options would fail.
 const CATEGORIES: api.ReferenceItem[] = [
@@ -28,7 +25,7 @@ const CREATED: api.CreatedTicket = {
   id: 101,
   ticketNumber: "TT-20260905-0042",
   ticketDate: "2026-09-05T12:30:00.000Z",
-  requester: { id: 11, name: "Alpha Requester" },
+  requester: { id: REQUESTER.id, name: REQUESTER.name },
   category: { id: 7, name: "Test Category One" },
   relatedSystem: { id: 21, name: "Test System One" },
   summary: "Laptop battery drains quickly",
@@ -43,7 +40,6 @@ const VALID_SUMMARY = "Laptop battery drains quickly";
 const VALID_DESCRIPTION = "The battery reaches zero within about an hour of use.";
 
 function mockReferenceData() {
-  vi.spyOn(api, "fetchActiveRequesters").mockResolvedValue(REQUESTERS);
   vi.spyOn(api, "fetchCategories").mockResolvedValue(CATEGORIES);
   vi.spyOn(api, "fetchRelatedSystems").mockResolvedValue(RELATED_SYSTEMS);
 }
@@ -53,18 +49,12 @@ function form() {
   return screen.getByRole("form", { name: /create ticket/i });
 }
 
-/** Selects the requester, then navigates to the Create Ticket screen. */
+/** Signs in as the fixture Requester and navigates to Create Ticket. */
 async function openCreateTicket(user: ReturnType<typeof userEvent.setup>) {
-  render(<Lab2App />);
-
-  await user.selectOptions(
-    await screen.findByLabelText(/development requester/i),
-    screen.getByRole("option", { name: /Alpha Requester/ }),
-  );
-  await user.click(screen.getByRole("button", { name: /continue/i }));
+  renderAsRequester(<Lab2App />);
 
   // "Create Ticket" appears in the nav and on the home screen; use the nav.
-  const nav = screen.getByRole("navigation", { name: /main/i });
+  const nav = await screen.findByRole("navigation", { name: /main/i });
   await user.click(within(nav).getByRole("button", { name: /create ticket/i }));
 
   await screen.findByRole("form", { name: /create ticket/i });
@@ -148,7 +138,7 @@ describe("UI-04 / UI-05 / UI-06 / UI-07 — Create Ticket (AC-05, AC-07, AC-09, 
     await openCreateTicket(user);
 
     const requesterField = screen.getByLabelText(/^requester/i);
-    expect(requesterField).toHaveValue("Alpha Requester");
+    expect(requesterField).toHaveValue(REQUESTER.name);
     expect(requesterField).toHaveAttribute("readonly");
   });
 
@@ -265,7 +255,7 @@ describe("UI-04 / UI-05 / UI-06 / UI-07 — Create Ticket (AC-05, AC-07, AC-09, 
   // -------------------------------------------------------------------------
   // Submission (AC-05, AC-09)
   // -------------------------------------------------------------------------
-  it("sends trimmed values and the selected requester id", async () => {
+  it("sends trimmed values without a requesterId (BR-03)", async () => {
     const user = userEvent.setup();
     const createSpy = vi.spyOn(api, "createTicket").mockResolvedValue(CREATED);
     await openCreateTicket(user);
@@ -279,7 +269,6 @@ describe("UI-04 / UI-05 / UI-06 / UI-07 — Create Ticket (AC-05, AC-07, AC-09, 
 
     await waitFor(() => expect(createSpy).toHaveBeenCalledTimes(1));
     expect(createSpy).toHaveBeenCalledWith({
-      requesterId: 11,
       categoryId: 7,
       relatedSystemId: 21,
       summary: VALID_SUMMARY,
@@ -503,8 +492,7 @@ describe("UI-04 / UI-05 / UI-06 / UI-07 — Create Ticket (AC-05, AC-07, AC-09, 
     await screen.findByTestId("created-ticket-number");
     // Assumption 10 — uploaded against the ticket the backend just created.
     await waitFor(() => expect(uploadSpy).toHaveBeenCalledTimes(1));
-    expect(uploadSpy.mock.calls[0][0]).toBe(11);
-    expect(uploadSpy.mock.calls[0][1]).toBe(CREATED.id);
+    expect(uploadSpy.mock.calls[0][0]).toBe(CREATED.id);
     expect(await screen.findByTestId("attachments-uploaded")).toHaveTextContent(
       "1 file attached",
     );

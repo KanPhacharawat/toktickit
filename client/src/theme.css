@@ -19,6 +19,11 @@ body {
   color: var(--zen-text);
 }
 
+/* Bootstrap's secondary grey is 4.4:1 on the page background, under WCAG AA. */
+.text-secondary {
+  color: var(--zen-muted) !important;
+}
+
 .zen-card {
   background: var(--zen-surface);
   border: 1px solid var(--zen-border);
@@ -161,10 +166,12 @@ body {
   color: var(--zen-error);
 }
 
+/* Amber on cream is 4.1:1, under WCAG AA, so the text stays dark and the
+   amber border and background carry the warning colour. */
 .zen-warning-banner {
   background-color: #fdf6e8;
   border: 1px solid var(--zen-warning);
-  color: var(--zen-warning);
+  color: var(--zen-text);
 }
 
 /* Success uses text as well as colour (ui-spec.md §10). */
@@ -252,7 +259,7 @@ body {
 }
 .zen-priority-high {
   background-color: #fdf6e8;
-  color: var(--zen-warning);
+  color: var(--zen-text);
 }
 .zen-priority-urgent {
   background-color: #fdf2f4;
@@ -263,6 +270,10 @@ body {
    sideways on mobile (ui-spec.md §9). */
 .table-responsive.zen-card {
   overflow-x: auto;
+  /* Visually-hidden text inside a cell is absolutely positioned. Without a
+     positioned ancestor it escapes this scroll container's clipping and
+     widens the page (the Edit button in the last column did exactly that). */
+  position: relative;
 }
 
 /* --- Collapsible filter panel ------------------------------------------- */
@@ -361,7 +372,7 @@ body {
 
 .zen-warning-badge {
   background-color: #fdf6e8;
-  color: var(--zen-warning);
+  color: var(--zen-text);
 }
 
 .zen-removal-form {

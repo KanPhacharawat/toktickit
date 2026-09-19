@@ -51,14 +51,17 @@ toktickit/
 │   ├── package.json
 │   └── vitest.config.ts
 │
-├── e2e/lab-02/                    Playwright E2E, responsive and visual tests
+├── e2e/lab-02/                    Playwright E2E, responsive and visual tests (Requester)
+├── e2e/lab-03/                    Playwright E2E, accessibility, responsive and visual
+│                                  tests for every role
 │
 ├── docs/
 │   ├── lab-01/
 │   └── lab-02/                    Specification, API spec, UI spec, test plan,
 │                                  peer review record, AI use record
 │
-├── artifacts/lab-02/screenshots/  Desktop/tablet/mobile visual evidence
+├── artifacts/lab-02/screenshots/  Desktop/tablet/mobile visual evidence (Lab 2)
+├── artifacts/lab-03/screenshots/  Desktop/tablet/mobile visual evidence (Lab 3)
 │
 ├── .gitignore
 ├── playwright.config.ts
@@ -338,8 +341,28 @@ npx playwright test --ui              # interactive runner
 npx playwright show-report            # open the last HTML report
 ```
 
-The E2E suite creates tickets in the database. It clears its own leftovers at
-the start of each run; to remove them by hand:
+The Lab 3 suites (`e2e/lab-03/`) sign in as the seeded accounts and cover every
+role:
+
+| File | Covers |
+| --- | --- |
+| `authentication.spec.ts` | E2E-01 to E2E-06: login per role, initial-password change, failures, logout, forbidden destinations |
+| `requester-regression.spec.ts` | E2E-07 to E2E-09: the Requester journey, Public Comment and Problem Appears Resolved, cross-Requester access |
+| `staff-ticket-flow.spec.ts` | E2E-10 to E2E-14: queue, claim and progress, assign and reassign, Public vs Internal, stale updates |
+| `user-administration.spec.ts` | E2E-15 to E2E-18: create, validate, edit, reset, deactivate, administrator safety rules |
+| `accessibility.spec.ts` | A11Y-01 to A11Y-04: keyboard flows and an `@axe-core/playwright` scan at 1280px and 390px |
+| `responsive-visual.spec.ts` | RESP-01 to RESP-06 layout checks, VIS-01 to VIS-05 screenshots, and a coverage check that every screen exists at every size |
+
+The client has no URL routes, so "typing `/queue`" cannot open a screen. E2E-06
+proves the same rule from both ends: the navigation never offers a destination
+the role may not use, and the API answers a direct call with `403`.
+
+Playwright needs the local Prisma dev database running (`cd server && npx prisma
+dev start default`) because the global setup re-runs the seed.
+
+The E2E suite creates tickets and users in the database. It clears its own
+leftovers at the start of each run (tickets whose summary starts with `E2E `,
+and users on the `@toktickit.test` domain); to remove them by hand:
 
 ```bash
 cd server && npx tsx scripts/clean-e2e-data.ts
@@ -527,7 +550,22 @@ requester-selection/    create-ticket/    my-tickets/    ticket-detail/
 
 Each folder holds `desktop.png`, `tablet.png`, and `mobile.png`, plus state
 variants for validation errors, expanded filters, the empty list, and removed
-attachments.
+attachments. (The Requester Selection screen was removed in Lab 3; its folder
+is kept as Lab 2 evidence and is no longer regenerated.)
+
+Lab 3 screenshots are written to `artifacts/lab-03/screenshots/`, one folder per
+`ui-spec.md` §16 group, named `<viewport>-<state>.png`
+(`desktop-`, `tablet-`, `mobile-`):
+
+```text
+authentication/    requester-tickets/    staff-queue/
+staff-ticket-detail/    user-management/
+```
+
+A screenshot is only written after the automated visual checklist passes for
+that state (no horizontal page scroll, no clipped button or label, everything
+inside the viewport), and the `VIS-coverage` test fails if any required screen
+is missing at any of the three sizes.
 
 ## License
 

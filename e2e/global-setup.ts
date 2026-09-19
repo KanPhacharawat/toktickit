@@ -13,6 +13,10 @@ import path from "node:path";
 export default function globalSetup() {
   const serverDir = path.resolve(process.cwd(), "server");
 
+  // Lab 3 — the visual suite checks that every screenshot it needs was written
+  // during this run, not left over from an earlier one.
+  process.env.E2E_RUN_STARTED = String(Date.now());
+
   // Lab 3 — reset the seeded development accounts, so the E2E login and the
   // mandatory-password-change fixtures always start from their documented
   // state (BR-59).

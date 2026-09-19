@@ -82,16 +82,24 @@ export default function StaffTicketDetail({
   const [commentRefreshToken, setCommentRefreshToken] = useState(0);
   const [noteRefreshToken, setNoteRefreshToken] = useState(0);
 
-  const load = useCallback(async () => {
-    setLoadState("loading");
-    setErrorMessage("");
-    setIsNotFound(false);
-    setStaleBanner(false);
+  /**
+   * `silent` refreshes the ticket in place. A Public Comment changes the
+   * ticket's Last Updated on the server (BR-43), so without a refresh the next
+   * operation would send an old `expectedUpdatedAt` and report a false conflict.
+   */
+  const load = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (!silent) {
+      setLoadState("loading");
+      setErrorMessage("");
+      setIsNotFound(false);
+      setStaleBanner(false);
+    }
     try {
       const detail = await fetchStaffTicketDetail(ticketId);
       setTicket(detail);
       setLoadState("ready");
     } catch (err) {
+      if (silent) return;
       setTicket(null);
       if (err instanceof ApiError) {
         setIsNotFound(err.status === 404);
@@ -303,7 +311,10 @@ export default function StaffTicketDetail({
               canPost={ticket.permissions.canAddPublicComment}
               closedMessage="This ticket is closed. New public comments are not accepted."
               refreshToken={commentRefreshToken}
-              onPosted={() => setCommentRefreshToken((t) => t + 1)}
+              onPosted={() => {
+                setCommentRefreshToken((t) => t + 1);
+                void load({ silent: true });
+              }}
               fetchEntries={fetchPublicComments}
               postEntry={postPublicComment}
             />

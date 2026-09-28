@@ -95,8 +95,10 @@ describe("MIG-01 — Lab 3 migration on Lab 2 data (AC-56, BR-57, FR-50)", () =>
       path.join(MIGRATIONS_DIR, "migration_lock.toml"),
       path.join(workDir, "migrations", "migration_lock.toml"),
     );
+    // Excluding by name rather than by "not Lab 3" so a later lab's migration
+    // (e.g. Lab 4) never gets swept into the pre-Lab-3 batch by accident.
     const lab2 = (await fs.readdir(MIGRATIONS_DIR)).filter(
-      (name) => !LAB3_MIGRATIONS.includes(name) && name !== "migration_lock.toml",
+      (name) => name === "20260814065122_init" || name === "20260906065709_lab2_ticketing_models",
     );
     for (const name of lab2) await copyMigration(name);
     await migrateDeploy();

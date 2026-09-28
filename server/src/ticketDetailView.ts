@@ -54,6 +54,8 @@ export async function loadStaffTicketDetail(
     itPriority: ticket.itPriority,
     problemAppearsResolvedAt: ticket.problemAppearsResolvedAt,
     updatedAt: ticket.updatedAt,
+    createdAt: ticket.createdAt,
+    version: ticket.version,
   };
 
   const terminal = isTerminal(ticket.currentStatus);

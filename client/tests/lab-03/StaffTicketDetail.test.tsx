@@ -39,6 +39,13 @@ function detail(overrides: Partial<api.StaffTicketDetail> = {}): api.StaffTicket
       canAddInternalNote: true,
       canManageAttachments: false,
     },
+    version: 1,
+    resolutionSummary: null,
+    resolvedAt: null,
+    closedAt: null,
+    cancelledAt: null,
+    cancelReason: null,
+    requesterResolvedIndicatedAt: null,
     ...overrides,
   };
 }
@@ -63,6 +70,12 @@ function mockShell() {
   vi.spyOn(api, "fetchPublicComments").mockResolvedValue([]);
   vi.spyOn(api, "fetchInternalNotes").mockResolvedValue([]);
   vi.spyOn(api, "fetchActionsTaken").mockResolvedValue({ items: [], total: 0 });
+  vi.spyOn(api, "fetchTransitions").mockResolvedValue({
+    currentStatus: "New",
+    version: 1,
+    transitions: [],
+    requesterCanIndicateResolved: false,
+  });
 }
 
 /** Renders the whole app as staff, then opens the given ticket from the queue. */
@@ -305,132 +318,10 @@ describe("UI-28 — IT Priority control (AC-38)", () => {
   });
 });
 
-describe("UI-29 — status control and confirmations (AC-39, AC-40, AC-42)", () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-    mockShell();
-  });
-  afterEach(() => vi.restoreAllMocks());
-
-  it("lists only the allowed transitions", async () => {
-    const user = userEvent.setup();
-    await openTicketDetail(
-      user,
-      detail({
-        currentStatus: "InProgress",
-        ticketOwner: { id: 9, name: "Sam Staff", role: "ITStaff" },
-        allowedStatusTransitions: ["WaitingForRequester", "Resolved", "Cancelled"],
-        permissions: {
-          canClaim: false,
-          canAssign: false,
-          canReassign: true,
-          canChangeItPriority: true,
-          canChangeStatus: true,
-          canAddPublicComment: true,
-          canAddInternalNote: true,
-          canManageAttachments: false,
-        },
-      }),
-    );
-
-    const select = screen.getByLabelText(/change status to/i);
-    const options = within(select)
-      .getAllByRole("option")
-      .map((o) => o.textContent);
-    expect(options).toEqual(["Change status to…", "Waiting For Requester", "Resolved", "Cancelled"]);
-  });
-
-  it("opens a confirmation dialog for Resolved and sends nothing on Keep Current Status", async () => {
-    const user = userEvent.setup();
-    const setStatusSpy = vi.spyOn(api, "setTicketStatus");
-    await openTicketDetail(
-      user,
-      detail({
-        currentStatus: "InProgress",
-        ticketOwner: { id: 9, name: "Sam Staff", role: "ITStaff" },
-        allowedStatusTransitions: ["Resolved", "Cancelled"],
-        permissions: {
-          canClaim: false,
-          canAssign: false,
-          canReassign: true,
-          canChangeItPriority: true,
-          canChangeStatus: true,
-          canAddPublicComment: true,
-          canAddInternalNote: true,
-          canManageAttachments: false,
-        },
-      }),
-    );
-
-    await user.selectOptions(screen.getByLabelText(/change status to/i), "Resolved");
-    await user.click(screen.getByRole("button", { name: /update status/i }));
-
-    expect(await screen.findByRole("dialog")).toHaveTextContent(/mark ticket .* as resolved/i);
-    await user.click(screen.getByRole("button", { name: /keep current status/i }));
-
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(setStatusSpy).not.toHaveBeenCalled();
-  });
-
-  it("confirms and sends the request", async () => {
-    const user = userEvent.setup();
-    const resolved = detail({
-      currentStatus: "Resolved",
-      ticketOwner: { id: 9, name: "Sam Staff", role: "ITStaff" },
-      allowedStatusTransitions: ["Closed", "Reopened"],
-    });
-    vi.spyOn(api, "setTicketStatus").mockResolvedValue(resolved);
-    await openTicketDetail(
-      user,
-      detail({
-        currentStatus: "InProgress",
-        ticketOwner: { id: 9, name: "Sam Staff", role: "ITStaff" },
-        allowedStatusTransitions: ["Resolved", "Cancelled"],
-        permissions: {
-          canClaim: false,
-          canAssign: false,
-          canReassign: true,
-          canChangeItPriority: true,
-          canChangeStatus: true,
-          canAddPublicComment: true,
-          canAddInternalNote: true,
-          canManageAttachments: false,
-        },
-      }),
-    );
-
-    await user.selectOptions(screen.getByLabelText(/change status to/i), "Resolved");
-    await user.click(screen.getByRole("button", { name: /update status/i }));
-    await user.click(await screen.findByRole("button", { name: /mark resolved/i }));
-
-    await waitFor(() => expect(api.setTicketStatus).toHaveBeenCalledWith(101, "Resolved", detail().updatedAt));
-    expect(await screen.findByTestId("detail-status")).toHaveTextContent("Resolved");
-  });
-
-  it("shows the terminal message for a Closed ticket", async () => {
-    const user = userEvent.setup();
-    await openTicketDetail(
-      user,
-      detail({
-        currentStatus: "Closed",
-        ticketOwner: { id: 9, name: "Sam Staff", role: "ITStaff" },
-        permissions: {
-          canClaim: false,
-          canAssign: false,
-          canReassign: false,
-          canChangeItPriority: false,
-          canChangeStatus: false,
-          canAddPublicComment: false,
-          canAddInternalNote: true,
-          canManageAttachments: false,
-        },
-      }),
-    );
-
-    expect(screen.getByText(/this ticket is closed\. no further changes are possible/i)).toBeInTheDocument();
-    expect(screen.queryByLabelText(/change status to/i)).not.toBeInTheDocument();
-  });
-});
+// UI-29's old status dropdown/confirm-dialog coverage moved to the Lab 4
+// Ticket Workflow panel, which replaced it (PATCH .../status is retired —
+// see server/tests/lab-04/ticket-workflow.api.test.ts and this suite's
+// sibling client/tests/lab-04/TicketWorkflow.test.tsx).
 
 describe("UI-31 — Internal Notes separation (AC-43, FR-40)", () => {
   beforeEach(() => {

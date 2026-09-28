@@ -779,7 +779,7 @@ export default function ActionsTakenSection({
   }
 
   return (
-    <section className="zen-card p-4 mt-3" aria-label="Actions Taken">
+    <section id="actions-taken-section" className="zen-card p-4 mt-3" aria-label="Actions Taken">
       <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
         <h2 className="zen-title h5 mb-0 me-auto">{`Actions Taken (${actions.length})`}</h2>
         {canWrite && !ticketLocked && !showCreate && (

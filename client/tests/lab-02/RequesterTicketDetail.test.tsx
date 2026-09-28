@@ -54,6 +54,13 @@ function detail(overrides: Partial<api.TicketDetail> = {}): api.TicketDetail {
       canAddPublicComment: true,
       canReportProblemResolved: false,
     },
+    version: 1,
+    resolutionSummary: null,
+    resolvedAt: null,
+    closedAt: null,
+    cancelledAt: null,
+    cancelReason: null,
+    requesterResolvedIndicatedAt: null,
     ...overrides,
   };
 }
@@ -66,6 +73,12 @@ function mockShell() {
   });
   vi.spyOn(api, "fetchPublicComments").mockResolvedValue([]);
   vi.spyOn(api, "fetchActionsTaken").mockResolvedValue({ items: [], total: 0 });
+  vi.spyOn(api, "fetchTransitions").mockResolvedValue({
+    currentStatus: "New",
+    version: 1,
+    transitions: [],
+    requesterCanIndicateResolved: false,
+  });
 }
 
 /** Signs in as the fixture Requester, then opens the ticket from the list. */

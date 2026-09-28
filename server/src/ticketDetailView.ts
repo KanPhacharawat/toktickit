@@ -79,6 +79,14 @@ export async function loadStaffTicketDetail(
     attachments: ticket.attachments.map(toAttachmentMetadata),
     itPriority: ticket.itPriority,
     ticketOwner: ticket.ticketOwner,
+    // Lab 4 api-spec.md §7 point 3 — needed by the Ticket Workflow panel.
+    version: ticket.version,
+    resolutionSummary: ticket.resolutionSummary,
+    resolvedAt: ticket.resolvedAt,
+    closedAt: ticket.closedAt,
+    cancelledAt: ticket.cancelledAt,
+    cancelReason: ticket.cancelReason,
+    requesterResolvedIndicatedAt: ticket.requesterResolvedIndicatedAt,
     allowedStatusTransitions: allowedStatusTransitions(ticket.currentStatus, hasOwner, hasAuthority),
     permissions: {
       canClaim: !hasOwner && !terminal,

@@ -65,6 +65,7 @@ function mockShell() {
     meta: { page: 1, pageSize: 10, totalItems: 1, totalPages: 1 },
   });
   vi.spyOn(api, "fetchPublicComments").mockResolvedValue([]);
+  vi.spyOn(api, "fetchActionsTaken").mockResolvedValue({ items: [], total: 0 });
 }
 
 /** Signs in as the fixture Requester, then opens the ticket from the list. */

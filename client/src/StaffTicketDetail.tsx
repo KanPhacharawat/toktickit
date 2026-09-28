@@ -15,8 +15,10 @@ import {
   type StaffTicketDetail as StaffTicketDetailData,
 } from "./api.js";
 import { useAuth } from "./AuthContext.js";
+import ActionsTakenSection from "./ActionsTakenSection.js";
 import ThreadSection from "./ThreadSection.js";
 import { priorityLabel } from "./ticketFormRules.js";
+import { isTicketLocked } from "./actionsTakenRules.js";
 
 /** Turns InProgress into "In Progress" for display. */
 function statusLabel(status: string): string {
@@ -303,6 +305,16 @@ export default function StaffTicketDetail({
                 </ul>
               )}
             </section>
+
+            <ActionsTakenSection
+              ticketId={ticket.id}
+              ticketCreatedAt={ticket.createdAt}
+              currentUserId={user.id}
+              canWrite
+              ticketLocked={isTicketLocked(ticket.currentStatus)}
+              assignableUsers={assignable}
+              onActionsChanged={() => void load({ silent: true })}
+            />
 
             <ThreadSection
               kind="public"

@@ -62,6 +62,7 @@ function mockShell() {
     data: [LIST_ROW],
     meta: { page: 1, pageSize: 10, totalItems: 1, totalPages: 1 },
   });
+  vi.spyOn(api, "fetchActionsTaken").mockResolvedValue({ items: [], total: 0 });
 }
 
 async function openDetail(user: ReturnType<typeof userEvent.setup>) {

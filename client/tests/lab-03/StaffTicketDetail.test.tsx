@@ -62,6 +62,7 @@ function mockShell() {
   ]);
   vi.spyOn(api, "fetchPublicComments").mockResolvedValue([]);
   vi.spyOn(api, "fetchInternalNotes").mockResolvedValue([]);
+  vi.spyOn(api, "fetchActionsTaken").mockResolvedValue({ items: [], total: 0 });
 }
 
 /** Renders the whole app as staff, then opens the given ticket from the queue. */

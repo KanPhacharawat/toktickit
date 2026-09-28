@@ -8,8 +8,10 @@ import {
   type TicketDetail,
 } from "./api.js";
 import { useAuth } from "./AuthContext.js";
+import ActionsTakenSection from "./ActionsTakenSection.js";
 import AttachmentSection from "./AttachmentSection.js";
 import ThreadSection from "./ThreadSection.js";
+import { isTicketLocked } from "./actionsTakenRules.js";
 import { priorityLabel } from "./ticketFormRules.js";
 
 const COMMENT_MAX = 2000;
@@ -331,6 +333,15 @@ export default function RequesterTicketDetail({
             ticketId={ticket.id}
             attachments={ticket.attachments}
             onChanged={() => load({ silent: true })}
+          />
+
+          <ActionsTakenSection
+            ticketId={ticket.id}
+            ticketCreatedAt={ticket.createdAt}
+            currentUserId={user?.id ?? -1}
+            canWrite={false}
+            ticketLocked={isTicketLocked(ticket.currentStatus)}
+            assignableUsers={[]}
           />
 
           <ThreadSection

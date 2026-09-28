@@ -966,6 +966,205 @@ export async function postInternalNote(ticketId: number, body: string): Promise<
 }
 
 // ---------------------------------------------------------------------------
+// Actions Taken (Lab 4 api-spec.md §2)
+// ---------------------------------------------------------------------------
+
+export type ActionStatus = "Planned" | "Completed" | "Cancelled";
+
+export interface ActionUserSummary {
+  id: number;
+  name: string;
+  role: string;
+}
+
+export interface ActionTaken {
+  id: number;
+  ticketId: number;
+  actionAt: string;
+  description: string;
+  result: string | null;
+  status: ActionStatus;
+  performedBy: ActionUserSummary;
+  isPerformedByOwner: boolean;
+  followUpRequired: boolean;
+  followUpNote: string | null;
+  attachmentNotes: string | null;
+  completedAt: string | null;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  /** Omitted from the response for a Requester (api-spec.md §1.2). */
+  createdBy?: ActionUserSummary;
+  updatedBy?: ActionUserSummary | null;
+  createdAt: string;
+  updatedAt: string;
+  version: number;
+}
+
+/**
+ * api-spec.md §2.3 — a 409 STALE_UPDATE reply carries the current record as a
+ * sibling of `error`, so the caller can offer "Reload latest" / "Copy my
+ * changes" from this one thrown error.
+ */
+export class StaleActionError extends ApiError {
+  readonly current: ActionTaken;
+  constructor(message: string, options: { status: number; current: ActionTaken }) {
+    super(message, { status: options.status, code: "STALE_UPDATE" });
+    this.current = options.current;
+  }
+}
+
+async function actionFetch(path: string, init: RequestInit): Promise<{ res: Response; body: unknown }> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      ...init,
+      credentials: "include",
+      headers: init.body
+        ? { "Content-Type": "application/json", ...init.headers }
+        : init.headers,
+    });
+  } catch {
+    throw new ApiError("Could not reach the server. Please try again.", {
+      status: 0,
+      code: "NETWORK_ERROR",
+    });
+  }
+  return { res, body: await readJson(res) };
+}
+
+function actionFromBody(body: unknown): ActionTaken {
+  const data = (body as { data?: ActionTaken } | null)?.data;
+  if (!data?.id) {
+    throw new ApiError("The action response was not understood.", {
+      status: 0,
+      code: "BAD_RESPONSE",
+    });
+  }
+  return data;
+}
+
+/** Throws StaleActionError for a 409 STALE_UPDATE reply, otherwise the usual ApiError. */
+function throwActionError(res: Response, body: unknown, fallback: string): never {
+  notifyIfSessionExpired(res.status);
+  const code = (body as { error?: { code?: string } } | null)?.error?.code;
+  const current = (body as { current?: ActionTaken } | null)?.current;
+  if (res.status === 409 && code === "STALE_UPDATE" && current?.id) {
+    const message = (body as { error?: { message?: string } } | null)?.error?.message;
+    throw new StaleActionError(typeof message === "string" ? message : fallback, {
+      status: res.status,
+      current,
+    });
+  }
+  throw toApiError(res, body, fallback);
+}
+
+/** api-spec.md §2.1 — FR-09 stable order (actionAt, createdAt, id) is server-side. */
+export async function fetchActionsTaken(
+  ticketId: number,
+): Promise<{ items: ActionTaken[]; total: number }> {
+  const { res, body } = await actionFetch(`/api/tickets/${ticketId}/actions`, { method: "GET" });
+  if (!res.ok) throwActionError(res, body, "Could not load actions taken. Please try again.");
+  const parsed = body as { items?: ActionTaken[]; total?: number } | null;
+  if (!Array.isArray(parsed?.items)) {
+    throw new ApiError("The action list response was not understood.", {
+      status: res.status,
+      code: "BAD_RESPONSE",
+    });
+  }
+  return { items: parsed.items, total: parsed.total ?? parsed.items.length };
+}
+
+export interface CreateActionInput {
+  clientRequestId: string;
+  actionAt: string;
+  description: string;
+  status: "Planned" | "Completed";
+  result?: string;
+  performedById?: number;
+  followUpRequired: boolean;
+  followUpNote?: string;
+  attachmentNotes?: string;
+}
+
+/** api-spec.md §2.2 — 201 on create, 200 on an idempotent replay; both carry the same shape. */
+export async function createActionTaken(
+  ticketId: number,
+  input: CreateActionInput,
+): Promise<ActionTaken> {
+  const { res, body } = await actionFetch(`/api/tickets/${ticketId}/actions`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throwActionError(res, body, "Could not save the action. Please try again.");
+  return actionFromBody(body);
+}
+
+export interface EditActionInput {
+  version: number;
+  actionAt?: string;
+  description?: string;
+  result?: string;
+  performedById?: number;
+  followUpRequired?: boolean;
+  followUpNote?: string;
+  attachmentNotes?: string;
+}
+
+/** api-spec.md §2.3 — every editable field is optional; `version` is required. */
+export async function editActionTaken(
+  ticketId: number,
+  actionId: number,
+  input: EditActionInput,
+): Promise<ActionTaken> {
+  const { res, body } = await actionFetch(`/api/tickets/${ticketId}/actions/${actionId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throwActionError(res, body, "Could not save the action. Please try again.");
+  return actionFromBody(body);
+}
+
+export interface CompleteActionInput {
+  version: number;
+  result: string;
+  followUpRequired: boolean;
+  followUpNote?: string;
+}
+
+/** api-spec.md §2.4 — only from Planned. */
+export async function completeActionTaken(
+  ticketId: number,
+  actionId: number,
+  input: CompleteActionInput,
+): Promise<ActionTaken> {
+  const { res, body } = await actionFetch(`/api/tickets/${ticketId}/actions/${actionId}/complete`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throwActionError(res, body, "Could not complete the action. Please try again.");
+  return actionFromBody(body);
+}
+
+export interface CancelActionInput {
+  version: number;
+  reason: string;
+}
+
+/** api-spec.md §2.5 — from Planned or Completed. */
+export async function cancelActionTaken(
+  ticketId: number,
+  actionId: number,
+  input: CancelActionInput,
+): Promise<ActionTaken> {
+  const { res, body } = await actionFetch(`/api/tickets/${ticketId}/actions/${actionId}/cancel`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throwActionError(res, body, "Could not cancel the action. Please try again.");
+  return actionFromBody(body);
+}
+
+// ---------------------------------------------------------------------------
 // Administrator User Management (Lab 3 api-spec.md §14)
 // ---------------------------------------------------------------------------
 

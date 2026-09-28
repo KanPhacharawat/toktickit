@@ -44,8 +44,10 @@ toktickit/
 ├── server/                        Express + Prisma backend
 │   ├── prisma/
 │   │   ├── schema.prisma
-│   │   ├── migrations/
+│   │   ├── migrations/            Includes the Lab 4 migration's rollback.sql
 │   │   ├── seed.ts
+│   │   ├── seedData.ts            Accounts, categories, related systems
+│   │   ├── seedTickets.ts         Lab 4 demo Tickets and Actions Taken
 │   │   └── verify-lab2.sql        Manual database verification script
 │   ├── scripts/
 │   │   └── clean-e2e-data.ts      Removes data left by E2E runs
@@ -54,6 +56,7 @@ toktickit/
 │   ├── tests/lab-02/              Lab 2 unit and API tests
 │   ├── tests/lab-03/              Lab 3 auth, authorization, queue, ticket operation,
 │   │                              user admin, seed and migration tests
+│   ├── tests/lab-04/              Lab 4 migration, rollback, and seed tests
 │   ├── uploads/                   Attachment files (gitignored)
 │   ├── .env.example
 │   ├── package.json
@@ -207,14 +210,40 @@ npx prisma migrate dev
 
 Do not run database commands against a database containing important data without checking the migration changes first.
 
-Then seed the reference data and development accounts:
+Then seed the reference data, development accounts, and demo Tickets:
 
 ```bash
 npm run prisma:seed
 ```
 
 The seed is idempotent. Every run resets the accounts below to the documented
-password and flags; accounts created in the app are never touched.
+password and flags, and upserts the same fixture Tickets and Actions Taken by
+their Ticket Number / idempotency key; accounts and Tickets created through the
+app are never touched.
+
+### Rolling back the Lab 4 migration
+
+`server/prisma/migrations/20261001100000_lab4_actions_taken_workflow/rollback.sql`
+undoes exactly that migration: it drops the `ActionTaken` and
+`TicketStatusHistory` tables, the new `Ticket` columns and indexes, and the
+`ActionStatus` enum. It does not touch any Lab 1–3 table or row.
+
+```bash
+# 1. Back up first — this is destructive to Lab 4 data.
+pg_dump -h localhost -U toktickit -d toktickit -f backup-before-rollback.sql
+
+# 2. Apply the rollback.
+psql -h localhost -U toktickit -d toktickit -f server/prisma/migrations/20261001100000_lab4_actions_taken_workflow/rollback.sql
+
+# 3. Tell Prisma the migration is no longer applied, so a future
+#    `prisma migrate deploy` re-applies it instead of skipping it.
+cd server
+npx prisma migrate resolve --rolled-back 20261001100000_lab4_actions_taken_workflow
+```
+
+`server/tests/lab-04/rollback.test.ts` exercises this whole sequence
+(migrate → seed → rollback → migrate again) against the disposable
+`MIGRATION_TEST_DATABASE_URL` database, so it never touches real data.
 
 ### Development accounts (local development only)
 
@@ -311,6 +340,15 @@ transitions, queue query, user validation) and API tests for authentication,
 the authorization matrix, the staff queue and ticket operations, comments and
 notes, and user administration. `migration.test.ts` migrates Lab 2 data to the
 Lab 3 schema and needs `MIGRATION_TEST_DATABASE_URL` (see above).
+
+Lab 4 adds `tests/lab-04/migration.test.ts` (replays a Lab 3 database through
+the Lab 4 migration and checks every existing User/Ticket/Attachment/Comment/
+Note row survives unchanged), `tests/lab-04/rollback.test.ts` (migrate → seed →
+`rollback.sql` → migrate again on a scratch database), and
+`tests/lab-04/seed.test.ts` (seed idempotency for the new Tickets and Actions
+Taken, and that the fixtures cover all 8 statuses, all 4 priorities,
+assigned/unassigned, and 0/1/many Actions Taken per Ticket). These also need
+`MIGRATION_TEST_DATABASE_URL`.
 
 Because these share one database, the suite runs one file at a time
 (`fileParallelism: false` in `vitest.config.ts`).
@@ -545,6 +583,28 @@ the IT Staff and Administrator sides of the service desk.
 - Migration of the Lab 2 Development Requesters into the `User` model with ids and
   tickets intact
 - Accessibility (keyboard flows and axe scans) and responsive checks for every role
+
+### Lab 4 — database foundation for Actions Taken and workflow
+
+Lab 4 adds the data layer for Actions Taken, the Ticket resolution workflow,
+and dashboards (see [`docs/lab-04/specification.md`](docs/lab-04/specification.md)
+for the full sprint scope):
+
+- `ActionTaken` and `TicketStatusHistory` models, and new `Ticket` columns
+  (`version`, `resolutionSummary`, `resolvedAt`, `closedAt`, `cancelledAt`,
+  `cancelReason`, `requesterResolvedIndicatedAt`) — additive migration
+  `20261001100000_lab4_actions_taken_workflow`, with a tested `rollback.sql`
+- Backfill of `resolvedAt`/`closedAt`/`resolutionSummary` for legacy
+  Resolved/Closed Tickets, and one initial `TicketStatusHistory` row per
+  existing Ticket
+- Seed data extended with 16 demo Tickets and their Actions Taken, covering
+  every `TicketStatus` and `ItPriority` value, assigned and unassigned
+  Tickets, 0/1/many Actions Taken per Ticket, a Planned action, a Cancelled
+  action, an action performed by IT Staff other than the Ticket Owner, and a
+  Requester with zero Tickets
+
+The Actions Taken and Ticket-workflow **API and UI** are implemented in later
+Lab 4 issues; this stage only prepares the schema, migration, and seed data.
 
 ### API endpoints
 

@@ -14,7 +14,8 @@ async function main() {
   console.log(
     `Seeded ${counts.categories} categories, ${counts.relatedSystems} related systems, ` +
       `${counts.accounts} accounts (Requesters: ${byRole("Requester")}, ` +
-      `IT Staff: ${byRole("ITStaff")}, Administrators: ${byRole("Administrator")}).`,
+      `IT Staff: ${byRole("ITStaff")}, Administrators: ${byRole("Administrator")}), ` +
+      `${counts.tickets} tickets, ${counts.actions} actions taken.`,
   );
 }
 

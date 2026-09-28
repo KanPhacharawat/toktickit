@@ -72,6 +72,13 @@ function staffDetail(overrides: Partial<api.StaffTicketDetail> = {}): api.StaffT
       canAddInternalNote: true,
       canManageAttachments: false,
     },
+    version: 1,
+    resolutionSummary: null,
+    resolvedAt: null,
+    closedAt: null,
+    cancelledAt: null,
+    cancelReason: null,
+    requesterResolvedIndicatedAt: null,
     ...overrides,
   };
 }
@@ -98,6 +105,13 @@ function requesterDetail(overrides: Partial<api.TicketDetail> = {}): api.TicketD
       canAddPublicComment: true,
       canReportProblemResolved: false,
     },
+    version: 1,
+    resolutionSummary: null,
+    resolvedAt: null,
+    closedAt: null,
+    cancelledAt: null,
+    cancelReason: null,
+    requesterResolvedIndicatedAt: null,
     ...overrides,
   };
 }
@@ -119,6 +133,12 @@ function mockShell() {
   vi.spyOn(api, "fetchPublicComments").mockResolvedValue([]);
   vi.spyOn(api, "fetchInternalNotes").mockResolvedValue([]);
   vi.spyOn(api, "fetchAdminUsers").mockResolvedValue({ data: [], meta: { totalItems: 0 } });
+  vi.spyOn(api, "fetchTransitions").mockResolvedValue({
+    currentStatus: "InProgress",
+    version: 1,
+    transitions: [],
+    requesterCanIndicateResolved: false,
+  });
 }
 
 /** Renders the app as IT Staff and opens the given ticket from the queue. */

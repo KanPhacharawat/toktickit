@@ -42,6 +42,13 @@ function detail(overrides: Partial<api.TicketDetail> = {}): api.TicketDetail {
       canAddPublicComment: true,
       canReportProblemResolved: true,
     },
+    version: 1,
+    resolutionSummary: null,
+    resolvedAt: null,
+    closedAt: null,
+    cancelledAt: null,
+    cancelReason: null,
+    requesterResolvedIndicatedAt: null,
     ...overrides,
   };
 }
@@ -63,6 +70,12 @@ function mockShell() {
     meta: { page: 1, pageSize: 10, totalItems: 1, totalPages: 1 },
   });
   vi.spyOn(api, "fetchActionsTaken").mockResolvedValue({ items: [], total: 0 });
+  vi.spyOn(api, "fetchTransitions").mockResolvedValue({
+    currentStatus: "InProgress",
+    version: 1,
+    transitions: [],
+    requesterCanIndicateResolved: false,
+  });
 }
 
 async function openDetail(user: ReturnType<typeof userEvent.setup>) {

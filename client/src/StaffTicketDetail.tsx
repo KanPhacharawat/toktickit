@@ -10,46 +10,20 @@ import {
   postPublicComment,
   setItPriority,
   setTicketOwner,
-  setTicketStatus,
   type AssignableUser,
   type StaffTicketDetail as StaffTicketDetailData,
+  type TicketWorkflowSummary,
 } from "./api.js";
 import { useAuth } from "./AuthContext.js";
 import ActionsTakenSection from "./ActionsTakenSection.js";
+import TicketWorkflow from "./TicketWorkflow.js";
 import ThreadSection from "./ThreadSection.js";
 import { priorityLabel } from "./ticketFormRules.js";
-import { isTicketLocked } from "./actionsTakenRules.js";
-
-/** Turns InProgress into "In Progress" for display. */
-function statusLabel(status: string): string {
-  return status.replace(/([a-z])([A-Z])/g, "$1 $2");
-}
-
-const CONFIRM_REQUIRED = new Set(["Resolved", "Closed", "Reopened", "Cancelled"]);
-
-const CONFIRM_COPY: Record<string, { text: (n: string) => string; confirmLabel: string }> = {
-  Resolved: {
-    text: (n) => `Mark ticket ${n} as Resolved? The requester will see this status.`,
-    confirmLabel: "Mark Resolved",
-  },
-  Closed: {
-    text: (n) => `Close ticket ${n}? Closed tickets cannot be changed again.`,
-    confirmLabel: "Close Ticket",
-  },
-  Reopened: {
-    text: (n) => `Reopen ticket ${n}? The resolution will be treated as not holding.`,
-    confirmLabel: "Reopen Ticket",
-  },
-  Cancelled: {
-    text: (n) => `Cancel ticket ${n}? Cancelled tickets cannot be changed again.`,
-    confirmLabel: "Cancel Ticket",
-  },
-};
+import { isTicketLocked, statusLabel } from "./actionsTakenRules.js";
 
 /** api-spec.md §2.2 — conflicts and rule violations that resolve with a silent reload. */
 const RELOAD_CODES = new Set([
   "TICKET_ALREADY_CLAIMED",
-  "INVALID_STATUS_TRANSITION",
   "OWNER_REQUIRED",
   "TICKET_CLOSED",
 ]);
@@ -156,6 +130,10 @@ export default function StaffTicketDetail({
     },
     [load],
   );
+
+  function handleWorkflowChanged(summary: TicketWorkflowSummary) {
+    setTicket((current) => (current ? { ...current, ...summary } : current));
+  }
 
   if (!user) return null;
 
@@ -342,6 +320,18 @@ export default function StaffTicketDetail({
               runOperation={runOperation}
             />
 
+            <TicketWorkflow
+              ticketId={ticket.id}
+              ticketNumber={ticket.ticketNumber}
+              role={user.role}
+              currentStatus={ticket.currentStatus}
+              version={ticket.version}
+              ticketOwnerName={ticket.ticketOwner ? ticket.ticketOwner.name : null}
+              itPriorityLabel={priorityLabel(ticket.itPriority)}
+              requesterResolvedIndicatedAt={ticket.requesterResolvedIndicatedAt}
+              onChanged={handleWorkflowChanged}
+            />
+
             <ThreadSection
               kind="internal"
               ticketId={ticket.id}
@@ -389,11 +379,6 @@ function OperationsCard({
   const [priorityError, setPriorityError] = useState("");
   const [prioritySuccess, setPrioritySuccess] = useState("");
 
-  const [statusDraft, setStatusDraft] = useState("");
-  const [savingStatus, setSavingStatus] = useState(false);
-  const [statusError, setStatusError] = useState("");
-  const [confirmTarget, setConfirmTarget] = useState<string | null>(null);
-
   const isOwner = ticket.ticketOwner?.id === currentUserId;
   const expectedUpdatedAt = ticket.updatedAt;
 
@@ -429,24 +414,6 @@ function OperationsCard({
     );
     if (ok) setPrioritySuccess(`IT Priority updated to ${priorityDraft}.`);
     setSavingPriority(false);
-  }
-
-  function requestStatusChange(target: string) {
-    if (CONFIRM_REQUIRED.has(target)) {
-      setConfirmTarget(target);
-    } else {
-      void saveStatus(target);
-    }
-  }
-
-  async function saveStatus(target: string) {
-    if (savingStatus) return;
-    setSavingStatus(true);
-    setStatusError("");
-    setConfirmTarget(null);
-    await runOperation(() => setTicketStatus(ticket.id, target, expectedUpdatedAt), setStatusError);
-    setStatusDraft("");
-    setSavingStatus(false);
   }
 
   return (
@@ -604,73 +571,9 @@ function OperationsCard({
         )}
       </div>
 
-      {/* Status */}
-      <div>
-        <p className="form-label fw-semibold mb-1">Status</p>
-        {ticket.currentStatus === "Closed" || ticket.currentStatus === "Cancelled" ? (
-          <p className="text-secondary small mb-0">
-            {`This ticket is ${statusLabel(ticket.currentStatus)}. No further changes are possible.`}
-          </p>
-        ) : ticket.permissions.canChangeStatus ? (
-          <>
-            <div className="d-flex flex-wrap gap-2">
-              <select
-                className="form-select zen-select"
-                style={{ maxWidth: 220 }}
-                aria-label="Change status to"
-                value={statusDraft}
-                onChange={(e) => setStatusDraft(e.target.value)}
-                disabled={ticket.allowedStatusTransitions.length === 0}
-              >
-                <option value="">Change status to…</option>
-                {ticket.allowedStatusTransitions.map((s) => (
-                  <option key={s} value={s}>
-                    {statusLabel(s)}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                className="btn zen-btn-outline"
-                disabled={!statusDraft || savingStatus}
-                aria-busy={savingStatus}
-                onClick={() => requestStatusChange(statusDraft)}
-              >
-                {savingStatus ? "Updating…" : "Update Status"}
-              </button>
-            </div>
-            {!ticket.ticketOwner && (
-              <p className="text-secondary small mt-1 mb-0">
-                Assign an owner before moving this ticket forward.
-              </p>
-            )}
-            {statusError && <p className="zen-error-text small mt-1 mb-0">{statusError}</p>}
-          </>
-        ) : (
-          <p className="text-secondary small mb-0">
-            Read-only status: {statusLabel(ticket.currentStatus)}. Only the ticket owner or an
-            administrator can change status.
-          </p>
-        )}
-      </div>
-
-      {confirmTarget && (
-        <div role="dialog" aria-modal="true" aria-label={`Confirm ${confirmTarget}`} className="zen-card p-3 mt-3">
-          <p className="mb-3">{CONFIRM_COPY[confirmTarget].text(ticket.ticketNumber)}</p>
-          <div className="d-flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="btn zen-btn-primary"
-              onClick={() => void saveStatus(confirmTarget)}
-            >
-              {CONFIRM_COPY[confirmTarget].confirmLabel}
-            </button>
-            <button type="button" className="btn zen-btn-outline" onClick={() => setConfirmTarget(null)}>
-              Keep Current Status
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Status is handled by the TicketWorkflow panel (Lab 4 §3), rendered
+          as its own card below — it owns the permitted-transitions list,
+          Resolve/Cancel/Reopen dialogs, and the resolution gate. */}
     </section>
   );
 }

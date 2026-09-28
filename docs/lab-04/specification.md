@@ -2,7 +2,6 @@
 
 > Location in repo: `docs/lab-04/specification.md`
 > Related: [`ui-spec.md`](./ui-spec.md) · [`api-spec.md`](./api-spec.md) · [`tests.md`](./tests.md)
-> Status: Draft v1.0 — must be merged to `lab4-staging` before implementation PRs are merged.
 
 ---
 
@@ -99,46 +98,46 @@ The service desk can already receive Tickets and let IT Staff talk to Requesters
 
 ### 5.1 Actions Taken
 
-| ID    | Rule                                                                                                                                                     |
-| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| BR-01 | An Action Taken belongs to exactly one Ticket (`ticketId` required, immutable).                                                                          |
-| BR-02 | The Ticket Owner coordinates the Ticket, but an Action Taken may be performed by a different IT Staff member.                                            |
-| BR-03 | Only IT Staff and Administrators can create, edit, complete, or cancel Actions Taken. Requesters are read-only.                                          |
-| BR-04 | `createdBy` is always the authenticated user; clients cannot set it.                                                                                     |
-| BR-05 | `performedBy` must reference an **active** user with role ITStaff or Administrator; otherwise the request is rejected (422 `INACTIVE_OR_INVALID_ASSIGNEE`).     |
-| BR-06 | `actionAt` is required, cannot be more than 5 minutes in the future (server time), and cannot be earlier than the Ticket's `createdAt`.                  |
-| BR-07 | `description` is required, 1–2000 characters after trim.                                                                                                 |
-| BR-08 | `result` is optional while `Planned`, required (1–2000 chars) when `Completed`.                                                                          |
-| BR-09 | If `followUpRequired = true`, `followUpNote` is required (1–1000 chars). If false, `followUpNote` is stored as null.                                     |
-| BR-10 | `attachmentNotes` is optional free text (≤ 500 chars) describing which files/images to look at; it does not upload files.                                |
-| BR-11 | Action status values: `Planned → Completed`, `Planned → Cancelled`, `Completed → Cancelled`. `Cancelled` is terminal and read-only.                      |
-| BR-12 | Cancelling requires `cancelReason` (1–500 chars). Actions Taken are never deleted.                                                                       |
-| BR-13 | Actions Taken cannot be created or edited when the Ticket is `Closed` or `Cancelled` (409 `TICKET_LOCKED`).                                              |
-| BR-14 | Every edit must send the current `version`; a mismatch returns 409 `STALE_UPDATE`.                                                                       |
-| BR-15 | Create requests carry a client-generated `clientRequestId` (UUID). A repeated id for the same Ticket returns the original record instead of a duplicate. |
+| ID    | Rule                                                                                                                                                        |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| BR-01 | An Action Taken belongs to exactly one Ticket (`ticketId` required, immutable).                                                                             |
+| BR-02 | The Ticket Owner coordinates the Ticket, but an Action Taken may be performed by a different IT Staff member.                                               |
+| BR-03 | Only IT Staff and Administrators can create, edit, complete, or cancel Actions Taken. Requesters are read-only.                                             |
+| BR-04 | `createdBy` is always the authenticated user; clients cannot set it.                                                                                        |
+| BR-05 | `performedBy` must reference an **active** user with role ITStaff or Administrator; otherwise the request is rejected (422 `INACTIVE_OR_INVALID_ASSIGNEE`). |
+| BR-06 | `actionAt` is required, cannot be more than 5 minutes in the future (server time), and cannot be earlier than the Ticket's `createdAt`.                     |
+| BR-07 | `description` is required, 1–2000 characters after trim.                                                                                                    |
+| BR-08 | `result` is optional while `Planned`, required (1–2000 chars) when `Completed`.                                                                             |
+| BR-09 | If `followUpRequired = true`, `followUpNote` is required (1–1000 chars). If false, `followUpNote` is stored as null.                                        |
+| BR-10 | `attachmentNotes` is optional free text (≤ 500 chars) describing which files/images to look at; it does not upload files.                                   |
+| BR-11 | Action status values: `Planned → Completed`, `Planned → Cancelled`, `Completed → Cancelled`. `Cancelled` is terminal and read-only.                         |
+| BR-12 | Cancelling requires `cancelReason` (1–500 chars). Actions Taken are never deleted.                                                                          |
+| BR-13 | Actions Taken cannot be created or edited when the Ticket is `Closed` or `Cancelled` (409 `TICKET_LOCKED`).                                                 |
+| BR-14 | Every edit must send the current `version`; a mismatch returns 409 `STALE_UPDATE`.                                                                          |
+| BR-15 | Create requests carry a client-generated `clientRequestId` (UUID). A repeated id for the same Ticket returns the original record instead of a duplicate.    |
 
 ### 5.2 Assignment and Dates
 
-| ID    | Rule                                                                                                               |
-| ----- | ------------------------------------------------------------------------------------------------------------------ |
+| ID    | Rule                                                                                                                         |
+| ----- | ---------------------------------------------------------------------------------------------------------------------------- |
 | BR-16 | A Ticket has at most one Ticket Owner (`ticketOwnerId`), who must be an active ITStaff/Administrator (preserved from Lab 3). |
-| BR-17 | All timestamps are stored in UTC. Dashboard day/week boundaries use **Asia/Bangkok (UTC+7)**.                      |
-| BR-18 | "Recent" means `updatedAt` within the last 7 days (rolling, now − 7×24h).                                          |
+| BR-17 | All timestamps are stored in UTC. Dashboard day/week boundaries use **Asia/Bangkok (UTC+7)**.                                |
+| BR-18 | "Recent" means `updatedAt` within the last 7 days (rolling, now − 7×24h).                                                    |
 
 ### 5.3 Ticket Status Transition Matrix
 
 Statuses: `New`, `Open`, `InProgress`, `WaitingForRequester`, `Resolved`, `Closed`, `Reopened`, `Cancelled`.
 
-| From \ To             | Open  | InProgress | WaitingForRequester | Resolved | Closed | Reopened              | Cancelled             |
-| --------------------- | ----- | ----------- | --------------------- | -------- | ------ | --------------------- | --------------------- |
-| New                   | Staff | Staff ¹     | –                     | –        | –      | –                     | Staff, Requester(own) |
-| Open                  | –     | Staff ¹     | Staff                 | –        | –      | –                     | Staff                 |
-| InProgress           | –     | –           | Staff                 | Staff ²  | –      | –                     | Staff                 |
-| WaitingForRequester | –     | Staff       | –                     | Staff ²  | –      | –                     | Staff                 |
-| Resolved              | –     | –           | –                     | –        | Staff  | Staff, Requester(own) | –                     |
-| Reopened              | –     | Staff ¹     | Staff                 | Staff ²  | –      | –                     | Staff                 |
-| Closed                | –     | –           | –                     | –        | –      | –                     | –                     |
-| Cancelled             | –     | –           | –                     | –        | –      | –                     | –                     |
+| From \ To           | Open  | InProgress | WaitingForRequester | Resolved | Closed | Reopened              | Cancelled             |
+| ------------------- | ----- | ---------- | ------------------- | -------- | ------ | --------------------- | --------------------- |
+| New                 | Staff | Staff ¹    | –                   | –        | –      | –                     | Staff, Requester(own) |
+| Open                | –     | Staff ¹    | Staff               | –        | –      | –                     | Staff                 |
+| InProgress          | –     | –          | Staff               | Staff ²  | –      | –                     | Staff                 |
+| WaitingForRequester | –     | Staff      | –                   | Staff ²  | –      | –                     | Staff                 |
+| Resolved            | –     | –          | –                   | –        | Staff  | Staff, Requester(own) | –                     |
+| Reopened            | –     | Staff ¹    | Staff               | Staff ²  | –      | –                     | Staff                 |
+| Closed              | –     | –          | –                   | –        | –      | –                     | –                     |
+| Cancelled           | –     | –          | –                   | –        | –      | –                     | –                     |
 
 "Staff" = ITStaff or Administrator. ¹ requires a Ticket Owner. ² requires the resolution gate.
 
@@ -146,8 +145,8 @@ Statuses: `New`, `Open`, `InProgress`, `WaitingForRequester`, `Resolved`, `Close
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | BR-19 | Any transition not in the matrix returns 422 `INVALID_TRANSITION`. `Closed` and `Cancelled` are terminal.                                                                                                                                                                                                                                                                                                                       |
 | BR-20 | **Resolution gate:** a Ticket may move to `Resolved` only if (a) it has a Ticket Owner, (b) at least one Action Taken is `Completed`, (c) no Action Taken is `Planned`, (d) no `Completed` Action has `followUpRequired = true` unless `followUpAcknowledged = true` in the request, and (e) a `resolutionSummary` (1–2000 chars) is supplied. Failures return 422 `RESOLUTION_GATE_FAILED` with the failing conditions listed. |
-| BR-21 | A Requester's "appears resolved" indication sets `requesterResolvedIndicatedAt`; it never changes status. It is allowed only in `InProgress`, `WaitingForRequester`, or `Reopened`.                                                                                                                                                                                                                                          |
-| BR-22 | Moving to `InProgress`, `WaitingForRequester`, or `Reopened` clears `requesterResolvedIndicatedAt`; moving to `Resolved` sets `resolvedAt`; `Closed` sets `closedAt`; `Reopened` clears `resolvedAt`.                                                                                                                                                                                                                        |
+| BR-21 | A Requester's "appears resolved" indication sets `requesterResolvedIndicatedAt`; it never changes status. It is allowed only in `InProgress`, `WaitingForRequester`, or `Reopened`.                                                                                                                                                                                                                                             |
+| BR-22 | Moving to `InProgress`, `WaitingForRequester`, or `Reopened` clears `requesterResolvedIndicatedAt`; moving to `Resolved` sets `resolvedAt`; `Closed` sets `closedAt`; `Reopened` clears `resolvedAt`.                                                                                                                                                                                                                           |
 | BR-23 | Cancelling a Ticket requires `reason` (1–500 chars).                                                                                                                                                                                                                                                                                                                                                                            |
 | BR-24 | Every status change writes one `TicketStatusHistory` row in the same DB transaction. History rows are never updated or deleted.                                                                                                                                                                                                                                                                                                 |
 | BR-25 | Status changes require the Ticket's current `version` (409 `STALE_UPDATE` on mismatch).                                                                                                                                                                                                                                                                                                                                         |
@@ -158,31 +157,31 @@ Statuses: `New`, `Open`, `InProgress`, `WaitingForRequester`, `Resolved`, `Close
 
 **Requester Dashboard** (always filtered by `requesterId = currentUser.id`):
 
-| ID    | Metric           | Calculation                                                                                       | Drill-down                                 |
-| ----- | ---------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| BR-26 | `myOpen`         | count where status ∈ open-like                                                                    | `/my-tickets?status=open`                  |
+| ID    | Metric           | Calculation                                                                                     | Drill-down                               |
+| ----- | ---------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| BR-26 | `myOpen`         | count where status ∈ open-like                                                                  | `/my-tickets?status=open`                |
 | BR-27 | `waitingForMe`   | count where status = WaitingForRequester                                                        | `/my-tickets?status=WaitingForRequester` |
-| BR-28 | `inProgress`     | count where status = InProgress                                                                  | `/my-tickets?status=InProgress`           |
-| BR-29 | `resolved`       | count where status = Resolved                                                                     | `/my-tickets?status=Resolved`              |
-| BR-30 | `closed`         | count where status = Closed                                                                       | `/my-tickets?status=Closed`                |
-| BR-31 | `recentTickets`  | 5 most recent by `updatedAt` desc, id desc                                                        | Ticket Detail                              |
-| BR-32 | `needsAttention` | up to 5 with status = WaitingForRequester or Resolved (awaiting confirmation), `updatedAt` desc | Ticket Detail                              |
+| BR-28 | `inProgress`     | count where status = InProgress                                                                 | `/my-tickets?status=InProgress`          |
+| BR-29 | `resolved`       | count where status = Resolved                                                                   | `/my-tickets?status=Resolved`            |
+| BR-30 | `closed`         | count where status = Closed                                                                     | `/my-tickets?status=Closed`              |
+| BR-31 | `recentTickets`  | 5 most recent by `updatedAt` desc, id desc                                                      | Ticket Detail                            |
+| BR-32 | `needsAttention` | up to 5 with status = WaitingForRequester or Resolved (awaiting confirmation), `updatedAt` desc | Ticket Detail                            |
 
 **IT Staff Dashboard** (all Tickets visible to staff):
 
-| ID    | Metric                             | Calculation                                                                                               | Drill-down                            |
-| ----- | ---------------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| BR-33 | `new`                              | count status = New                                                                                        | `/queue?status=New`                   |
-| BR-34 | `open`                             | count status ∈ {Open, Reopened}                                                                           | `/queue?status=Open,Reopened`         |
-| BR-35 | `inProgress`                       | count status = InProgress                                                                                | `/queue?status=InProgress`           |
-| BR-36 | `waitingForRequester`              | count status = WaitingForRequester                                                                      | `/queue?status=WaitingForRequester` |
-| BR-37 | `unassigned`                       | count ticketOwnerId IS NULL and status ∈ open-like                                                           | `/queue?ownership=unassigned&status=open`    |
-| BR-38 | `myAssigned`                       | count ticketOwnerId = me and status ∈ open-like                                                              | `/queue?ownership=mine&status=open`      |
-| BR-39 | `byPriority`                       | count per IT Priority (all 4 levels, zero-filled) for open-like                                           | `/queue?priority=<P>&status=open`     |
-| BR-40 | `myOpenFollowUps`                  | count Actions Taken where performedBy = me, status = Completed, followUpRequired = true, Ticket open-like | `/queue?followUpFor=me`               |
-| BR-41 | `urgentTickets`                    | up to 5 open-like with priority ∈ {URGENT, HIGH}, ordered priority desc, createdAt asc                  | Ticket Detail                         |
-| BR-42 | `recentTickets`                    | up to 5 open-like by `updatedAt` desc, id desc                                                            | Ticket Detail                         |
-| BR-43 | `todayDelta` (optional small text) | count created since 00:00 Asia/Bangkok today per card; omitted if not implemented                         | —                                     |
+| ID    | Metric                             | Calculation                                                                                               | Drill-down                                |
+| ----- | ---------------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| BR-33 | `new`                              | count status = New                                                                                        | `/queue?status=New`                       |
+| BR-34 | `open`                             | count status ∈ {Open, Reopened}                                                                           | `/queue?status=Open,Reopened`             |
+| BR-35 | `inProgress`                       | count status = InProgress                                                                                 | `/queue?status=InProgress`                |
+| BR-36 | `waitingForRequester`              | count status = WaitingForRequester                                                                        | `/queue?status=WaitingForRequester`       |
+| BR-37 | `unassigned`                       | count ticketOwnerId IS NULL and status ∈ open-like                                                        | `/queue?ownership=unassigned&status=open` |
+| BR-38 | `myAssigned`                       | count ticketOwnerId = me and status ∈ open-like                                                           | `/queue?ownership=mine&status=open`       |
+| BR-39 | `byPriority`                       | count per IT Priority (all 4 levels, zero-filled) for open-like                                           | `/queue?priority=<P>&status=open`         |
+| BR-40 | `myOpenFollowUps`                  | count Actions Taken where performedBy = me, status = Completed, followUpRequired = true, Ticket open-like | `/queue?followUpFor=me`                   |
+| BR-41 | `urgentTickets`                    | up to 5 open-like with priority ∈ {URGENT, HIGH}, ordered priority desc, createdAt asc                    | Ticket Detail                             |
+| BR-42 | `recentTickets`                    | up to 5 open-like by `updatedAt` desc, id desc                                                            | Ticket Detail                             |
+| BR-43 | `todayDelta` (optional small text) | count created since 00:00 Asia/Bangkok today per card; omitted if not implemented                         | —                                         |
 
 **Administrator additions:**
 
@@ -308,21 +307,21 @@ model TicketStatusHistory {
 
 Full details in [`api-spec.md`](./api-spec.md).
 
-| Method | Path                                                | Roles                           |
-| ------ | --------------------------------------------------- | ------------------------------- |
+| Method | Path                                                | Roles                                  |
+| ------ | --------------------------------------------------- | -------------------------------------- |
 | GET    | `/api/tickets/:ticketId/actions`                    | Requester(own), ITStaff, Administrator |
 | POST   | `/api/tickets/:ticketId/actions`                    | ITStaff, Administrator                 |
 | PATCH  | `/api/tickets/:ticketId/actions/:actionId`          | ITStaff, Administrator                 |
 | POST   | `/api/tickets/:ticketId/actions/:actionId/complete` | ITStaff, Administrator                 |
 | POST   | `/api/tickets/:ticketId/actions/:actionId/cancel`   | ITStaff, Administrator                 |
 | GET    | `/api/tickets/:ticketId/transitions`                | Requester(own), ITStaff, Administrator |
-| POST   | `/api/tickets/:ticketId/status`                     | per matrix                      |
-| POST   | `/api/tickets/:ticketId/requester-resolution`       | Requester(own)                  |
+| POST   | `/api/tickets/:ticketId/status`                     | per matrix                             |
+| POST   | `/api/tickets/:ticketId/requester-resolution`       | Requester(own)                         |
 | GET    | `/api/tickets/:ticketId/status-history`             | Requester(own), ITStaff, Administrator |
-| GET    | `/api/dashboard/requester`                          | Requester                       |
+| GET    | `/api/dashboard/requester`                          | Requester                              |
 | GET    | `/api/dashboard/staff`                              | ITStaff, Administrator                 |
-| GET    | `/api/dashboard/admin`                              | Administrator                           |
-| GET    | `/api/health`                                       | public                          |
+| GET    | `/api/dashboard/admin`                              | Administrator                          |
+| GET    | `/api/health`                                       | public                                 |
 
 Standard error body: `{ "error": { "code", "message", "details?" } }`. Status codes: 400 validation shape, 401, 403, 404, 409 conflict/stale, 422 business rule, 500 safe error (no stack traces).
 
@@ -413,7 +412,7 @@ Every AC maps to at least one test in [`tests.md`](./tests.md).
 | A-02 | Handout grading mentions "assign, complete, cancel" for Actions Taken, so an action has a status (Planned/Completed/Cancelled) and an assignable `performedBy`, while "Performed by (auto)" defaults to the current user. |
 | A-03 | Any IT Staff may add actions to any Ticket (not only their own), matching BR-02 and the "accessible Tickets" wording.                                                                                                     |
 | A-04 | Requesters see all Actions Taken fields except `createdBy/updatedBy` audit ids; internal details belong in Internal Notes, not actions.                                                                                   |
-| A-05 | IT Priority levels are `LOW, MEDIUM, HIGH, URGENT` (unchanged from Lab 3's `ItPriority` enum).                                                                                                                                                       |
+| A-05 | IT Priority levels are `LOW, MEDIUM, HIGH, URGENT` (unchanged from Lab 3's `ItPriority` enum).                                                                                                                            |
 | A-06 | Time zone for all date boundaries is Asia/Bangkok; the API returns ISO-8601 UTC and the client formats in local time.                                                                                                     |
 | A-07 | No real-time push; dashboards refresh on load and via a Refresh button.                                                                                                                                                   |
 | A-08 | Only the Requester who owns the Ticket may Reopen it, and only from Resolved (not Closed).                                                                                                                                |

@@ -82,6 +82,8 @@ async function handleTicketList(
       ...(query.currentStatus !== null
         ? { currentStatus: query.currentStatus }
         : {}),
+      // api-spec.md §4.4 — dashboard drill-down `status` (list or "open" alias).
+      ...(query.status !== null ? { currentStatus: { in: query.status } } : {}),
       // BR-21 — search matches Ticket Number or Summary, within the owner scope.
       ...(query.search
         ? {

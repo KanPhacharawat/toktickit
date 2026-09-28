@@ -9,6 +9,7 @@ import { staffOperationsRouter } from "./staffOperations.js";
 import { adminUsersRouter } from "./adminUsers.js";
 import { actionsTakenRouter } from "./actionsTaken.js";
 import { ticketWorkflowRouter } from "./ticketWorkflow.js";
+import { dashboardRouter } from "./dashboard.js";
 import { authRouter } from "./auth/routes.js";
 import { bcryptCost } from "./auth/credentials.js";
 import { protect } from "./auth/middleware.js";
@@ -120,6 +121,7 @@ app.use(actionsTakenRouter);
 // from staffOperationsRouter above); this is the only status-change route,
 // so bypassing the UI can never skip the matrix or the resolution gate.
 app.use(ticketWorkflowRouter);
+app.use(dashboardRouter);
 
 // api-spec.md §1.1 — any unmatched /api route, including a removed Lab 2
 // one, answers the documented envelope instead of Express's default HTML.

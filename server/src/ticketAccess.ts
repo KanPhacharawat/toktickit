@@ -39,6 +39,8 @@ export type TicketAccess = {
   itPriority: ItPriority;
   problemAppearsResolvedAt: Date | null;
   updatedAt: Date;
+  createdAt: Date;
+  version: number;
 };
 
 /**
@@ -68,6 +70,8 @@ export async function resolveTicketAccess(
       itPriority: true,
       problemAppearsResolvedAt: true,
       updatedAt: true,
+      createdAt: true,
+      version: true,
     },
   });
 
@@ -86,6 +90,8 @@ export async function resolveTicketAccess(
     itPriority: ticket.itPriority,
     problemAppearsResolvedAt: ticket.problemAppearsResolvedAt,
     updatedAt: ticket.updatedAt,
+    createdAt: ticket.createdAt,
+    version: ticket.version,
   };
 }
 

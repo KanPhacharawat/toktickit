@@ -23,7 +23,20 @@ export const STAFF: CurrentUser = {
   mustChangePassword: false,
 };
 
-/** Stubs the Lab 2/3 screens behind the gate so these suites stay on auth. */
+/** An empty Lab 4 staff dashboard body (api-spec.md §4.2), for suites that stay on auth. */
+export function emptyStaffDashboard(): api.StaffDashboardData {
+  return {
+    generatedAt: "2026-10-01T00:00:00.000Z",
+    timeZone: "Asia/Bangkok",
+    metrics: [],
+    secondary: [],
+    byPriority: [],
+    urgentTickets: [],
+    recentTickets: [],
+  };
+}
+
+/** Stubs the Lab 2/3/4 screens behind the gate so these suites stay on auth. */
 export function stubLab2Screens() {
   vi.spyOn(api, "fetchCategories").mockResolvedValue([]);
   vi.spyOn(api, "fetchMyTickets").mockResolvedValue({
@@ -41,6 +54,11 @@ export function stubLab2Screens() {
     },
   });
   vi.spyOn(api, "fetchAdminUsers").mockResolvedValue({ data: [], meta: { totalItems: 0 } });
+  vi.spyOn(api, "fetchStaffDashboard").mockResolvedValue(emptyStaffDashboard());
+  vi.spyOn(api, "fetchAdminDashboard").mockResolvedValue({
+    ...emptyStaffDashboard(),
+    users: { active: { Requester: 0, ITStaff: 0, Administrator: 0 }, inactive: 0 },
+  });
 }
 
 /** Renders the whole app with the given session (null = signed out). */

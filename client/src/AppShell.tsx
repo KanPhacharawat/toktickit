@@ -5,13 +5,19 @@ import ProfileMenu from "./ProfileMenu.js";
 /** The Requester-facing screens reachable from the shell nav. */
 export type AppView = "tickets" | "create";
 
-/** The Administrator's two destinations (ui-spec.md §2.2). */
-export type StaffView = "users" | "queue";
+/** IT Staff and Administrator destinations (Lab 4 ui-spec.md §2). */
+export type StaffView = "dashboard" | "users" | "queue";
 
 const STAFF_NAV_LABELS: Record<StaffView, string> = {
+  dashboard: "Dashboard",
   users: "User Management",
   queue: "Ticket Queue",
 };
+
+/** ui-spec.md §2 — IT Staff: Dashboard · Ticket Queue. */
+const ITSTAFF_DESTINATIONS: readonly StaffView[] = ["dashboard", "queue"];
+/** ui-spec.md §2 — Administrator: IT Staff nav + Users. */
+const ADMIN_DESTINATIONS: readonly StaffView[] = ["dashboard", "queue", "users"];
 
 /**
  * Application shell — Lab 3 ui-spec.md §3.
@@ -38,10 +44,7 @@ export default function AppShell({
   const auth = useOptionalAuth();
   const role = auth?.user?.role;
   const showRequesterNav = Boolean(role === "Requester" && onNavigate);
-  // IT Staff has one destination (ui-spec.md §2.2): a static label, not a
-  // button, since there is nowhere else to navigate to.
-  const showStaffLabel = role === "ITStaff";
-  // Administrator has two: User Management (home) and Ticket Queue.
+  const showItStaffNav = role === "ITStaff" && Boolean(onNavigateStaff);
   const showAdminNav = role === "Administrator" && Boolean(onNavigateStaff);
 
   return (
@@ -74,23 +77,12 @@ export default function AppShell({
             </nav>
           )}
 
-          {showStaffLabel && (
+          {(showItStaffNav || showAdminNav) && (
             <nav
               className="d-flex flex-wrap align-items-center gap-3"
               aria-label="Main"
             >
-              <span className="zen-nav-link" aria-current="page">
-                Ticket Queue
-              </span>
-            </nav>
-          )}
-
-          {showAdminNav && (
-            <nav
-              className="d-flex flex-wrap align-items-center gap-3"
-              aria-label="Main"
-            >
-              {(["users", "queue"] as const).map((destination) => (
+              {(showAdminNav ? ADMIN_DESTINATIONS : ITSTAFF_DESTINATIONS).map((destination) => (
                 <button
                   key={destination}
                   type="button"

@@ -128,6 +128,15 @@ function mockShell() {
   vi.spyOn(api, "fetchInternalNotes").mockResolvedValue([]);
   vi.spyOn(api, "fetchActionsTaken").mockResolvedValue({ items: [], total: 0 });
   vi.spyOn(api, "fetchAdminUsers").mockResolvedValue({ data: [], meta: { totalItems: 0 } });
+  vi.spyOn(api, "fetchStaffDashboard").mockResolvedValue({
+    generatedAt: "2026-10-01T00:00:00.000Z",
+    timeZone: "Asia/Bangkok",
+    metrics: [],
+    secondary: [],
+    byPriority: [],
+    urgentTickets: [],
+    recentTickets: [],
+  });
 }
 
 async function openStaffDetail(
@@ -159,6 +168,8 @@ async function openStaffDetail(
   vi.spyOn(api, "fetchTransitions").mockResolvedValue(transitionsResponse);
 
   render(<App />);
+  // Lab 4 — Dashboard is home for IT Staff; the queue is a second stop.
+  await user.click(await screen.findByRole("button", { name: /^ticket queue$/i }));
   await user.click(await screen.findByRole("button", { name: new RegExp(detail.ticketNumber) }));
   await screen.findByTestId("detail-ticket-number");
   await screen.findByTestId("ticket-workflow");

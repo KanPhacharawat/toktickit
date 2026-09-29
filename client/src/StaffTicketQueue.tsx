@@ -8,6 +8,7 @@ import {
   TICKET_STATUSES,
   fetchCategories,
   fetchQueue,
+  type ItPriority,
   type QueueCounts,
   type QueueMeta,
   type QueueRow,
@@ -28,12 +29,14 @@ type QuickView = "active" | "unassigned" | "mine" | "all" | null;
 /** The filter/search/sort/page state that drives one request. */
 interface Controls {
   search: string;
-  /** "" (all statuses), "active", "closed", or one TicketStatus value. */
+  /** "" (all statuses), "active", "closed", one TicketStatus, a comma list, or "open". */
   status: string;
   ownership: "" | "mine" | "unassigned";
   itPriority: string;
   requestedPriority: string;
   categoryId: string;
+  /** Lab 4 — dashboard drill-down: my open follow-ups (BR-40). */
+  followUpFor: "" | "me";
   sortBy: QueueSortableField;
   sortOrder: SortOrder;
   page: number;
@@ -49,11 +52,59 @@ const DEFAULT_CONTROLS: Controls = {
   itPriority: "",
   requestedPriority: "",
   categoryId: "",
+  followUpFor: "",
   sortBy: "ticketDate",
   sortOrder: "asc",
   page: 1,
   pageSize: 20,
 };
+
+/**
+ * Lab 4 ui-spec.md §3.2 — the shape a Staff Dashboard metric card passes to
+ * seed the queue. `status` may be a single TicketStatus, a comma list (e.g.
+ * "Open,Reopened"), or the "open" alias — same values the server's `status`
+ * drill-down param accepts (api-spec.md §4.4).
+ */
+export interface StaffQueueDrillDownFilters {
+  status?: string;
+  ownership?: "" | "mine" | "unassigned";
+  itPriority?: string;
+  followUpFor?: "" | "me";
+}
+
+/** Splits `controls.status` into the three request shapes the queue API understands. */
+function statusRequestParts(status: string): {
+  statusGroup: "" | "active" | "closed";
+  currentStatus: string;
+  rawStatus: string;
+} {
+  if (status === "" ) return { statusGroup: "", currentStatus: "", rawStatus: "" };
+  if (status === "active" || status === "closed") {
+    return { statusGroup: status, currentStatus: "", rawStatus: "" };
+  }
+  if ((TICKET_STATUSES as readonly string[]).includes(status)) {
+    return { statusGroup: "", currentStatus: status, rawStatus: "" };
+  }
+  // A comma list or the "open" alias — passed through as the raw drill-down param.
+  return { statusGroup: "", currentStatus: "", rawStatus: status };
+}
+
+/** Turns a drill-down filter set into human text so the applied filter is visible. */
+function describeDrillDownFilters(controls: Controls): string[] {
+  const parts: string[] = [];
+  if (controls.status && controls.status !== "active") {
+    parts.push(
+      controls.status === "open"
+        ? "Status: Open-like"
+        : `Status: ${controls.status.split(",").map(statusLabel).join(", ")}`,
+    );
+  }
+  if (controls.ownership === "mine") parts.push("Assigned to Me");
+  if (controls.ownership === "unassigned") parts.push("Unassigned");
+  if (controls.itPriority) parts.push(`IT Priority: ${priorityLabel(controls.itPriority as ItPriority)}`);
+  if (controls.followUpFor === "me") parts.push("My open follow-ups");
+  return parts;
+}
 
 const SORT_LABELS: Record<QueueSortableField, string> = {
   ticketDate: "Created Date",
@@ -79,14 +130,24 @@ function quickViewOf(controls: Controls): QuickView {
  */
 function hasActiveFilters(controls: Controls): boolean {
   return Boolean(
-    controls.search || controls.itPriority || controls.requestedPriority || controls.categoryId,
+    controls.search ||
+      controls.itPriority ||
+      controls.requestedPriority ||
+      controls.categoryId ||
+      controls.followUpFor,
   );
 }
 
 export default function StaffTicketQueue({
   onOpenTicket,
+  initialFilters,
+  filterToken,
 }: {
   onOpenTicket?: (ticketId: number) => void;
+  /** Lab 4 ui-spec.md §3.2 — seeds the queue from a Staff Dashboard metric card. */
+  initialFilters?: StaffQueueDrillDownFilters;
+  /** Bump so the same filters (e.g. clicking "New" twice) still re-apply. */
+  filterToken?: number;
 }) {
   const { user } = useAuth();
 
@@ -114,24 +175,38 @@ export default function StaffTicketQueue({
     };
   }, []);
 
+  // Lab 4 ui-spec.md §3.2 — a dashboard metric card (or "Search Tickets") seeds
+  // the queue's filters; no `initialFilters` means "reset to the defaults".
+  useEffect(() => {
+    if (!filterToken) return;
+    setSearchDraft("");
+    setControls({
+      ...DEFAULT_CONTROLS,
+      status: initialFilters?.status ?? DEFAULT_CONTROLS.status,
+      ownership: initialFilters?.ownership ?? "",
+      itPriority: initialFilters?.itPriority ?? "",
+      followUpFor: initialFilters?.followUpFor ?? "",
+    });
+    setFiltersOpen(Boolean(initialFilters));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterToken]);
+
   useEffect(() => {
     let cancelled = false;
 
     setLoadState("loading");
     setErrorMessage("");
 
-    const statusGroup = controls.status === "active" || controls.status === "closed" ? controls.status : "";
-    const currentStatus =
-      controls.status !== "" && controls.status !== "active" && controls.status !== "closed"
-        ? controls.status
-        : "";
+    const { statusGroup, currentStatus, rawStatus } = statusRequestParts(controls.status);
 
     fetchQueue({
       search: controls.search,
       statusGroup,
       currentStatus,
+      status: rawStatus,
       ownership: controls.ownership,
       itPriority: controls.itPriority,
+      followUpFor: controls.followUpFor,
       requestedPriority: controls.requestedPriority,
       categoryId: controls.categoryId,
       sortBy: controls.sortBy,
@@ -175,10 +250,11 @@ export default function StaffTicketQueue({
   }, []);
 
   function selectQuickView(view: QuickView) {
-    if (view === "active") updateControls({ status: "active", ownership: "" });
-    else if (view === "unassigned") updateControls({ status: "active", ownership: "unassigned" });
-    else if (view === "mine") updateControls({ status: "active", ownership: "mine" });
-    else updateControls({ status: "", ownership: "" });
+    if (view === "active") updateControls({ status: "active", ownership: "", followUpFor: "" });
+    else if (view === "unassigned")
+      updateControls({ status: "active", ownership: "unassigned", followUpFor: "" });
+    else if (view === "mine") updateControls({ status: "active", ownership: "mine", followUpFor: "" });
+    else updateControls({ status: "", ownership: "", followUpFor: "" });
   }
 
   function clearFilters() {
@@ -196,7 +272,9 @@ export default function StaffTicketQueue({
     controls.itPriority,
     controls.requestedPriority,
     controls.categoryId,
+    controls.followUpFor,
   ].filter(Boolean).length;
+  const drillDownDescription = describeDrillDownFilters(controls);
   const totalPages = meta?.totalPages ?? 0;
   const showLoading = loadState === "loading";
   const showEmpty = loadState === "ready" && rows.length === 0 && !filtersActive && currentQuickView === "all";
@@ -209,6 +287,15 @@ export default function StaffTicketQueue({
       {invalidQueryWarning && (
         <div className="alert zen-warning-banner mb-3" role="alert">
           Some filters were not valid and have been reset.
+        </div>
+      )}
+
+      {drillDownDescription.length > 0 && (
+        <div className="zen-success-banner d-flex flex-wrap align-items-center gap-2 mb-3" role="status">
+          <span>{`Filtered: ${drillDownDescription.join(" · ")}`}</span>
+          <button type="button" className="btn btn-sm zen-btn-outline" onClick={clearFilters}>
+            Clear
+          </button>
         </div>
       )}
 

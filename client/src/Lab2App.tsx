@@ -2,6 +2,7 @@ import { useState } from "react";
 import AppShell, { type AppView } from "./AppShell.js";
 import CreateTicket from "./CreateTicket.js";
 import MyTickets, { type MyTicketsDrillDownFilters } from "./MyTickets.js";
+import NotFound from "./NotFound.js";
 import RequesterDashboard from "./RequesterDashboard.js";
 import RequesterTicketDetail from "./RequesterTicketDetail.js";
 import "./theme.css";
@@ -49,13 +50,18 @@ export default function Lab2App() {
           onOpenMyTickets={openMyTickets}
           onCreateTicket={() => setView("create")}
         />
-      ) : (
+      ) : view === "tickets" ? (
         <MyTickets
           onCreateTicket={() => setView("create")}
           onOpenTicket={setOpenTicketId}
           initialFilters={ticketsFilters}
           filterToken={ticketsFilterToken}
         />
+      ) : (
+        // Defensive: no nav item can reach an unrecognized AppView, but a
+        // future destination added without a matching branch here should
+        // fail safe (ui-spec.md §2 line 61) rather than render nothing.
+        <NotFound onGoToDashboard={() => setView("dashboard")} />
       )}
     </AppShell>
   );

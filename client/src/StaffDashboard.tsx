@@ -9,6 +9,7 @@ import {
   type StaffDashboardData,
 } from "./api.js";
 import { useAuth } from "./AuthContext.js";
+import Forbidden from "./Forbidden.js";
 import { priorityLabel } from "./ticketFormRules.js";
 import type { StaffQueueDrillDownFilters } from "./StaffTicketQueue.js";
 import type { UserListDrillDownFilters } from "./UserManagement.js";
@@ -184,13 +185,7 @@ export default function StaffDashboard({
   if (!user) return null;
 
   if (loadState === "forbidden") {
-    return (
-      <main className="container py-4">
-        <div className="alert zen-error-banner" role="alert">
-          You don&apos;t have permission to view this dashboard.
-        </div>
-      </main>
-    );
+    return <Forbidden onGoToDashboard={() => void load(false)} />;
   }
 
   const firstName = user.name.split(" ")[0];

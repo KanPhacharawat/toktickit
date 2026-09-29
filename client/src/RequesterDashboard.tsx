@@ -6,6 +6,7 @@ import {
   type RequesterDashboardData,
 } from "./api.js";
 import { useAuth } from "./AuthContext.js";
+import Forbidden from "./Forbidden.js";
 import type { MyTicketsDrillDownFilters } from "./MyTickets.js";
 
 /** Turns InProgress into "In Progress" for display. */
@@ -159,13 +160,7 @@ export default function RequesterDashboard({
   if (!user) return null;
 
   if (loadState === "forbidden") {
-    return (
-      <main className="container py-4">
-        <div className="alert zen-error-banner" role="alert">
-          You don&apos;t have permission to view this dashboard.
-        </div>
-      </main>
-    );
+    return <Forbidden onGoToDashboard={() => void load(false)} />;
   }
 
   const firstName = user.name.split(" ")[0];

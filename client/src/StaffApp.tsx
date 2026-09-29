@@ -1,6 +1,7 @@
 import { useState } from "react";
 import AppShell, { type StaffView } from "./AppShell.js";
 import { useAuth } from "./AuthContext.js";
+import NotFound from "./NotFound.js";
 import StaffDashboard from "./StaffDashboard.js";
 import StaffTicketDetail from "./StaffTicketDetail.js";
 import StaffTicketQueue, { type StaffQueueDrillDownFilters } from "./StaffTicketQueue.js";
@@ -51,12 +52,17 @@ export default function StaffApp() {
           initialFilters={queueFilters}
           filterToken={queueFilterToken}
         />
-      ) : (
+      ) : staffView === "users" ? (
         <UserManagement
           onSelfDeactivated={() => void signOut()}
           initialFilters={usersFilters}
           filterToken={usersFilterToken}
         />
+      ) : (
+        // Defensive: no nav item can reach an unrecognized StaffView, but a
+        // future destination added without a matching branch here should
+        // fail safe (ui-spec.md §2 line 61) rather than render nothing.
+        <NotFound onGoToDashboard={() => setStaffView("dashboard")} />
       )}
     </AppShell>
   );

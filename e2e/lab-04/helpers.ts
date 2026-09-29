@@ -37,10 +37,14 @@ export {
 } from "../lab-03/helpers.js";
 
 /**
- * Signs in an account that is seeded with `mustChangePassword: true` and
- * completes the mandatory Change Password screen, landing on that role's
- * Dashboard. Global setup reseeds the account's password each run, so this
- * is safe to run repeatedly.
+ * Signs in an account seeded with `mustChangePassword: true`, completing the
+ * mandatory Change Password screen if it's still pending. Global setup
+ * reseeds the account's password at the start of the run, but another spec
+ * in the same run may have already completed this same account's mandatory
+ * change (e.g. e2e/lab-02/responsive-visual.spec.ts's VIS-empty test also
+ * signs in as Requester E) — so this tries the seeded password first, and
+ * falls back to the already-changed one rather than assuming which state
+ * the account is in.
  */
 export async function signInAndChangePassword(
   page: Page,
@@ -49,16 +53,29 @@ export async function signInAndChangePassword(
   newPassword = STRONG_PASSWORD,
 ) {
   await attemptSignIn(page, email, currentPassword);
-  await expect(page.getByRole("heading", { name: /change your password/i })).toBeVisible();
-  const form = page.getByRole("form", { name: /change password/i });
-  // getByLabel would also match each field's "Show <label>" toggle button
-  // (its own accessible name repeats the field label), so scope to the
-  // textbox role specifically.
-  await form.getByRole("textbox", { name: /current \(temporary\) password/i }).fill(currentPassword);
-  await form.getByRole("textbox", { name: /^new password/i }).fill(newPassword);
-  await form.getByRole("textbox", { name: /^confirm new password/i }).fill(newPassword);
-  await form.getByRole("button", { name: /^save password$/i }).click();
-  await expect(page.getByTestId("signed-in-user")).toBeVisible();
+  const changePassword = page.getByRole("heading", { name: /change your password/i });
+  const shellReady = page.getByTestId("signed-in-user");
+  const invalidCredentials = page.getByRole("alert").filter({ hasText: /invalid email or password/i });
+  await expect(changePassword.or(shellReady).or(invalidCredentials).first()).toBeVisible();
+
+  if (await invalidCredentials.isVisible()) {
+    // Another spec already completed this account's mandatory change.
+    await attemptSignIn(page, email, newPassword);
+    await expect(shellReady).toBeVisible();
+    return;
+  }
+
+  if (await changePassword.isVisible()) {
+    const form = page.getByRole("form", { name: /change password/i });
+    // getByLabel would also match each field's "Show <label>" toggle button
+    // (its own accessible name repeats the field label), so scope to the
+    // textbox role specifically.
+    await form.getByRole("textbox", { name: /current \(temporary\) password/i }).fill(currentPassword);
+    await form.getByRole("textbox", { name: /^new password/i }).fill(newPassword);
+    await form.getByRole("textbox", { name: /^confirm new password/i }).fill(newPassword);
+    await form.getByRole("button", { name: /^save password$/i }).click();
+  }
+  await expect(shellReady).toBeVisible();
 }
 
 /**

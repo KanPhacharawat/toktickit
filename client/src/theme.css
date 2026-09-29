@@ -223,6 +223,7 @@ body {
   display: none;
   font-size: 1.25rem;
   line-height: 1;
+  min-height: 32px;
   padding: 0.35rem 0.5rem;
 }
 @media (max-width: 767px) {
@@ -571,6 +572,9 @@ body {
 .zen-link-badge {
   background: none;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
 }
 .zen-link-badge:hover {
   background-color: var(--zen-pale);

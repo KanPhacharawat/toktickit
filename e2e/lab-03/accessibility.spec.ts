@@ -105,7 +105,9 @@ test("A11Y-01 — the profile menu opens with Enter, walks with Tab, and closes 
   await tabTo(page, cancel, "Cancel");
   await expectFocusRing(cancel, "Cancel");
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("heading", { name: /^my tickets$/i })).toBeVisible();
+  // Lab 4 — the Requester lands on, and Cancel returns to, the Dashboard
+  // (ui-spec.md §2), not My Tickets.
+  await expect(page.getByRole("heading", { level: 1 })).toContainText(/welcome/i);
 });
 
 test("A11Y-01 — mandatory Change Password works by keyboard and announces its errors", async ({
@@ -160,21 +162,29 @@ test("A11Y-02 — staff Ticket Detail operations and threads are reachable and o
 }) => {
   const ticket = await createTicketAs(ACCOUNTS.requesterB.email, "a11y staff detail");
 
-  // Prepare a claimed, In Progress ticket through the API so the Resolved dialog is reachable.
+  // Prepare a claimed, In Progress ticket through the API so the status
+  // dialog is reachable. Lab 3's PATCH .../status is retired (Lab 4
+  // api-spec.md §3.2); POST .../status is versioned, so each hop reads the
+  // version the previous response returned.
   const staff = await apiSession(ACCOUNTS.staff1.email);
   const claimed = await staff.post(`/api/tickets/${ticket.id}/claim`, { data: {} });
   expect(claimed.status()).toBe(200);
-  for (const status of ["Open", "InProgress"]) {
-    const moved = await staff.patch(`/api/tickets/${ticket.id}/status`, {
-      data: { currentStatus: status },
+  let version = ((await claimed.json()).data as { version: number }).version;
+  for (const toStatus of ["Open", "InProgress"]) {
+    const moved = await staff.post(`/api/tickets/${ticket.id}/status`, {
+      data: { toStatus, version },
     });
     expect(moved.status()).toBe(200);
+    version = ((await moved.json()).ticket as { version: number }).version;
   }
   await staff.dispose();
 
   await signIn(page, ACCOUNTS.staff1.email);
   await openTicketFromQueue(page, ticket);
   const operations = page.getByRole("region", { name: /^ticket operations$/i });
+  // Lab 4 — status changes moved out of "Ticket operations" into their own
+  // "Ticket workflow" panel (client/src/TicketWorkflow.tsx).
+  const workflow = page.getByTestId("ticket-workflow");
 
   // IT Priority: reach the select and the Save button by Tab, change and save by keyboard.
   const priority = page.getByLabel("IT Priority", { exact: true });
@@ -188,26 +198,30 @@ test("A11Y-02 — staff Ticket Detail operations and threads are reachable and o
   await page.keyboard.press("Enter");
   await expect(operations.getByRole("status")).toContainText("IT Priority updated to");
 
-  // Status: pick Resolved, open the confirmation by keyboard, and operate it by keyboard.
-  const status = page.getByLabel("Change status to", { exact: true });
+  // Status: pick Waiting for Requester (Resolved's checklist-gated dialog is
+  // AX-01's job, docs/lab-04/tests.md), open the confirmation by keyboard,
+  // and operate it by keyboard.
+  const status = workflow.getByLabel("Change status to", { exact: true });
   await tabTo(page, status, "Change status select");
-  await status.selectOption({ label: "Resolved" });
-  const update = operations.getByRole("button", { name: /^update status$/i });
+  await status.selectOption({ label: "Waiting For Requester" });
+  const update = workflow.getByRole("button", { name: /^update status$/i });
   await tabTo(page, update, "Update Status");
   await expectFocusRing(update, "Update Status");
   await page.keyboard.press("Enter");
 
-  const dialog = page.getByRole("dialog", { name: /confirm resolved/i });
+  const dialog = page.getByRole("dialog", { name: /^change status to waiting for requester$/i });
   await expect(dialog).toBeVisible();
-  const confirmButton = dialog.getByRole("button", { name: /^mark resolved$/i });
+  const confirmButton = dialog.getByRole("button", { name: /^update status$/i });
   const keep = dialog.getByRole("button", { name: /^keep current status$/i });
-  await tabTo(page, confirmButton, "Mark Resolved");
-  await expectFocusRing(confirmButton, "Mark Resolved");
+  await tabTo(page, confirmButton, "Update Status (confirm)");
+  await expectFocusRing(confirmButton, "Update Status (confirm)");
   await page.keyboard.press("Tab");
   await expectFocusRing(keep, "Keep Current Status");
+  await page.keyboard.press("Shift+Tab");
+  await expectFocusRing(confirmButton, "Update Status (confirm)");
   await page.keyboard.press("Enter");
   await expect(dialog).toHaveCount(0);
-  await expect(page.getByTestId("detail-status")).toHaveText("In Progress");
+  await expect(page.getByTestId("detail-status")).toHaveText("Waiting For Requester");
 
   // Threads: composers are reachable, labelled, and post by keyboard.
   const publicSection = page.getByRole("region", { name: /^public comments$/i });
@@ -250,6 +264,15 @@ test("A11Y-02 — staff Ticket Detail operations and threads are reachable and o
 
 test("A11Y-03 — User Management panels and the Active switch work by keyboard", async ({ page }) => {
   await signIn(page, ACCOUNTS.admin.email);
+  // Lab 4 — the Administrator lands on the Dashboard (ui-spec.md §2); User
+  // Management is a second stop, reached from the nav by keyboard (this
+  // whole suite stays keyboard-only, and a mouse .click() here would drop
+  // Chromium out of focus-visible/keyboard modality for what follows).
+  const usersNav = page
+    .getByRole("navigation", { name: /^main$/i })
+    .getByRole("button", { name: /^user management$/i });
+  await usersNav.focus();
+  await page.keyboard.press("Enter");
   await expect(page.getByTestId("user-rows")).toBeVisible();
 
   // Open Create User with Enter.
@@ -360,8 +383,14 @@ for (const [label, size] of [
     await page.getByRole("button", { name: /^log out$/i }).click();
     await expect(page.getByRole("button", { name: /^sign in$/i })).toBeVisible();
 
-    // Requester: My Tickets and Ticket Detail.
+    // Requester: lands on the Dashboard (ui-spec.md §2), then My Tickets and Ticket Detail.
     await signIn(page, ACCOUNTS.requesterA.email);
+    await expect(page.getByRole("heading", { level: 1 })).toContainText(/welcome/i);
+    await expectNoSeriousViolations(page, "Requester Dashboard");
+    await page
+      .getByRole("navigation", { name: /^main$/i })
+      .getByRole("button", { name: /^my tickets$/i })
+      .click();
     await expect(page.getByTestId("ticket-rows")).toBeVisible();
     await expectNoSeriousViolations(page, "My Tickets");
     await page.getByLabel(/^search$/i).fill(ticket.ticketNumber);
@@ -371,8 +400,10 @@ for (const [label, size] of [
     await expectNoSeriousViolations(page, "Requester Ticket Detail");
     await logOut(page);
 
-    // IT Staff: Queue and Ticket Detail.
+    // IT Staff: lands on the Dashboard, then Queue and Ticket Detail.
     await signIn(page, ACCOUNTS.staff1.email);
+    await expect(page.getByRole("heading", { level: 1 })).toContainText(/welcome back/i);
+    await expectNoSeriousViolations(page, "Staff Dashboard");
     await gotoQueue(page);
     await expectNoSeriousViolations(page, "Ticket Queue");
     await openTicketFromQueue(page, ticket);
@@ -380,8 +411,14 @@ for (const [label, size] of [
     await expectNoSeriousViolations(page, "Staff Ticket Detail");
     await logOut(page);
 
-    // Administrator: User Management, with the Create panel open.
+    // Administrator: lands on the Dashboard, then User Management with the Create panel open.
     await signIn(page, ACCOUNTS.admin.email);
+    await expect(page.getByRole("heading", { level: 1 })).toContainText(/welcome back/i);
+    await expectNoSeriousViolations(page, "Admin Dashboard");
+    await page
+      .getByRole("navigation", { name: /^main$/i })
+      .getByRole("button", { name: /^user management$/i })
+      .click();
     await expect(page.getByTestId("user-rows")).toBeVisible();
     await expectNoSeriousViolations(page, "User Management");
     await page.getByRole("button", { name: /^create user$/i }).click();

@@ -66,12 +66,17 @@ test("Requester dashboards never show another Requester's tickets (AC-02)", asyn
 test("a Requester with no tickets sees a zero-count empty state with Create Ticket (AC-26)", async ({
   page,
 }) => {
-  const consoleGuard = watchConsoleErrors(page);
   // Requester E is seeded with zero tickets (server/prisma/seedTickets.ts),
   // and no other Lab 4 E2E fixture touches this account. It's also seeded
   // with mustChangePassword: true, so this signs in through that mandatory
   // screen first; global setup resets the password on the next run.
+  //
+  // signInAndChangePassword may probe the seeded password first and fall
+  // back to the already-changed one if another spec in this run already
+  // completed this account's mandatory change — that probe's expected 401
+  // isn't a dashboard bug, so the console guard starts only once signed in.
   await signInAndChangePassword(page, ACCOUNTS.requesterE.email);
+  const consoleGuard = watchConsoleErrors(page);
 
   for (const label of ["My Open Tickets", "Waiting for You", "In Progress", "Resolved", "Closed"]) {
     await expect(metricCard(page, label)).toHaveAttribute("aria-label", `${label}: 0, view all`);

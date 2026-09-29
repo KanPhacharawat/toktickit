@@ -152,7 +152,9 @@ for (const [name, viewport] of LAB4_VIEWPORT_LIST) {
     const page = await context.newPage();
     const consoleGuard = watchConsoleErrors(page);
     try {
-      const ticket = await createTicketAs(ACCOUNTS.requesterC.email, `Resolution ${name} viewport`);
+      // Not Requester C — e2e/lab-02/responsive-visual.spec.ts (VIS-empty)
+      // relies on that account staying permanently empty.
+      const ticket = await createTicketAs(ACCOUNTS.requesterB.email, `Resolution ${name} viewport`);
       await signIn(page, ACCOUNTS.staff2.email);
       await openTicketFromQueue(page, ticket);
       await claimTicket(page);

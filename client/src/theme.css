@@ -214,6 +214,46 @@ body {
   outline-offset: 2px;
 }
 
+/* Mobile nav (ui-spec.md §2 line 60): a hamburger toggle that opens a
+   full-width drawer, replacing the inline nav row below 768px. */
+.zen-nav-toggle {
+  background: none;
+  border: none;
+  color: #fff;
+  display: none;
+  font-size: 1.25rem;
+  line-height: 1;
+  padding: 0.35rem 0.5rem;
+}
+@media (max-width: 767px) {
+  .zen-nav-toggle {
+    display: inline-flex;
+  }
+  .zen-nav-desktop {
+    display: none;
+  }
+}
+.zen-nav-drawer-overlay {
+  background: rgba(0, 0, 0, 0.4);
+  inset: 0;
+  position: fixed;
+  z-index: 1050;
+}
+.zen-nav-drawer {
+  background: var(--zen-primary);
+  color: #fff;
+  height: 100%;
+  max-width: 320px;
+  overflow-y: auto;
+  padding: 1rem;
+  width: 100%;
+}
+.zen-nav-drawer-link {
+  padding: 0.75rem 0.5rem;
+  text-align: left;
+  width: 100%;
+}
+
 /* --- My Tickets --------------------------------------------------------- */
 
 .zen-table {

@@ -31,8 +31,8 @@ Every row's Requirement/AC column cites the FR/BR/AC ids it verifies from [`spec
 | A-05 | API | BR-03, AC-04, AC-06, AC-27, §6 Authorization Matrix | Cross-cutting authorization matrix sweep: every Lab 4 endpoint × every role (Requester/ITStaff/Admin, incl. inactive user) | Response code matches the matrix in `api-spec.md` §6 exactly for every (endpoint, role) pair | `server/tests/lab-04/authorization.api.test.ts` | Planned |
 | A-06 | API | BR-14, BR-25, AC-10, AC-21 | Optimistic concurrency: stale `version` on Action Taken edit and on `POST /status` | Both return `409` with the current record in the body; no partial write occurs | `server/tests/lab-04/concurrency.api.test.ts` | Planned |
 | A-07 | API | AC-25, BR-45 | Every dashboard metric's drill-down link, queried against the extended list endpoints (`/queue`, `/my-tickets`, `/admin/users`) | Drill-down list `total` equals the metric `value` for every metric on seed data | `server/tests/lab-04/dashboard-drilldown.api.test.ts` | Planned |
-| A-08 | API | FR-28, AC-37 | `GET /api/health` with DB up and with DB unreachable (mocked) | `200 { status: "ok", db: "up" }` when reachable; `503 { status: "degraded", db: "down" }` otherwise, no internals leaked | `server/tests/lab-04/health.api.test.ts` | Planned |
-| A-09 | API | §7 note 1 (Lab 3 `PATCH /status` retirement) | Old `PATCH /api/tickets/:id/status` route and `PATCH /api/tickets/:id` with a `status` field | Both return `404`/`400 USE_STATUS_ENDPOINT`; gate cannot be bypassed via the legacy route | `server/tests/lab-04/legacy-status-route.api.test.ts` | Planned |
+| A-08 | API | FR-28, AC-37 | `GET /api/health` with DB up and with DB unreachable (mocked) | `200 { status: "ok", db: "up" }` when reachable; `503 { status: "degraded", db: "down" }` otherwise, no internals leaked | `server/tests/lab-04/health.api.test.ts` | Done |
+| A-09 | API | §7 note 1 (Lab 3 `PATCH /status` retirement) | Old `PATCH /api/tickets/:id/status` route and a generic `PATCH /api/tickets/:id` with a `status` field | Both `404` (neither route exists); gate cannot be bypassed via either | `server/tests/lab-04/legacy-status-route.api.test.ts` | Done |
 
 \* AC-05 is primarily a UI assertion; A-01 covers its API precondition (Requester GET returns full list with no write routes reachable). \*\* AC-28 (error banner) is a UI-only behavior; A-04 covers that the API surfaces a real 5xx for the UI to react to.
 
@@ -66,9 +66,9 @@ Every row's Requirement/AC column cites the FR/BR/AC ids it verifies from [`spec
 
 | Test ID | Type | Requirement/AC | What It Tests | Expected Result | Automated Test File | Final |
 | ------- | ---- | --------------- | -------------- | ---------------- | -------------------- | ----- |
-| R-01 | Regression | FR-23, AC-31 | Existing Lab 1–3 suites (auth, My Tickets, Ticket Detail, attachments, comments, internal notes, queue, assignment, user management) run unchanged against the Lab 4 schema/API | All existing suites remain green; tests that PATCHed `status` are updated to call `POST /status` | `server/tests/lab-01/*.test.ts`, `server/tests/lab-02/*.test.ts`, `server/tests/lab-03/*.test.ts` (updated in place), `client/tests/lab-02/*.test.tsx`, `client/tests/lab-03/*.test.tsx` | Planned |
-| R-02 | Regression | FR-25, AC-32 | Double-click / rapid repeat submit on comments, notes, attachments, ticket creation, and Actions Taken forms | At most one record created per logical submit across all forms | `client/tests/lab-04/DuplicateSubmit.test.tsx` | Planned |
-| R-03 | Regression | FR-26, AC-33 | Form field values after a simulated 5xx / network failure on create/edit forms across the app | All form fields retain their entered values; user can retry without retyping | `client/tests/lab-04/FormResilience.test.tsx` | Planned |
+| R-01 | Regression | FR-23, AC-31 | Existing Lab 1–3 suites (auth, My Tickets, Ticket Detail, attachments, comments, internal notes, queue, assignment, user management) run unchanged against the Lab 4 schema/API | All existing suites remain green; tests that PATCHed `status` are updated to call `POST /status` | `server/tests/lab-01/*.test.ts`, `server/tests/lab-02/*.test.ts`, `server/tests/lab-03/*.test.ts` (updated in place), `client/tests/lab-02/*.test.tsx`, `client/tests/lab-03/*.test.tsx`, `e2e/lab-03/*.spec.ts` (updated in place) | Done |
+| R-02 | Regression | FR-25, AC-32 | Double-click / rapid repeat submit on comments, notes, attachments, ticket creation, and Actions Taken forms | At most one record created per logical submit across all forms | `client/tests/lab-04/DuplicateSubmit.test.tsx` | Done |
+| R-03 | Regression | FR-26, AC-33 | Form field values after a simulated 5xx / network failure on create/edit forms across the app | All form fields retain their entered values; user can retry without retyping | `client/tests/lab-04/FormResilience.test.tsx` | Done |
 
 ## 7. Responsive, Accessibility, Performance-Smoke Tests
 
@@ -76,7 +76,7 @@ Every row's Requirement/AC column cites the FR/BR/AC ids it verifies from [`spec
 | ------- | ---- | --------------- | -------------- | ---------------- | -------------------- | ----- |
 | RS-01 | Responsive | FR-22, AC-34 | All Lab 4 screens (dashboards, Actions Taken, workflow dialogs) at 375 / 768 / 1280 px | No horizontal page scroll, no clipped or overlapping controls at any width | `e2e/lab-04/responsive-visual.spec.ts` | Planned |
 | AX-01 | Accessibility | AC-35 | axe scan + keyboard-only walkthrough of dashboards, Actions Taken, workflow dialogs, nav drawer | 0 serious/critical axe violations; every action reachable and operable via keyboard with visible focus; status conveyed by text, not color alone | `e2e/lab-04/accessibility.spec.ts` | Planned |
-| P-01 | Performance-smoke | Spec §1 non-functional intent (DoD dashboards) | Response time of `/api/dashboard/requester`, `/api/dashboard/staff`, `/api/dashboard/admin` against seeded data | Each responds in < 500 ms (median of 5 runs) | `server/tests/lab-04/performance-smoke.test.ts` | Planned |
+| P-01 | Performance-smoke | Spec §1 non-functional intent (DoD dashboards) | Response time of `/api/dashboard/requester`, `/api/dashboard/staff`, `/api/dashboard/admin` against seeded data | Each responds in < 500 ms (median of 5 runs) | `server/tests/lab-04/performance-smoke.test.ts` | Done |
 
 ## 8. End-to-End (E2E) Tests
 

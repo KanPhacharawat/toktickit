@@ -60,7 +60,14 @@ async function createTicket(overrides: {
 function validCreateBody(overrides: Record<string, unknown> = {}) {
   return {
     clientRequestId: randomUUID(),
-    actionAt: new Date().toISOString(),
+    // A bare `new Date()` here can land a millisecond or two before the
+    // fixture ticket's own `createdAt` (Postgres's and Node's clocks aren't
+    // synchronized to sub-millisecond precision), intermittently tripping
+    // "Action date/time cannot be before the ticket was created." No real
+    // user submits within a millisecond of creating a ticket; this small
+    // forward pad is well inside the 5-minutes-future cap and removes the
+    // flake without loosening the validation rule itself.
+    actionAt: new Date(Date.now() + 50).toISOString(),
     description: "Investigated and applied a fix.",
     status: "Completed",
     result: "Issue resolved after applying the fix.",
@@ -157,7 +164,7 @@ describe("GET /api/tickets/:ticketId/actions", () => {
     await prisma.actionTaken.create({
       data: {
         ticketId: ticket.id,
-        actionAt: new Date(),
+        actionAt: new Date(Date.now() + 50), // padded — see validCreateBody() above
         description: "Visible to the requester.",
         performedById: staff1Id,
         createdById: staff1Id,
@@ -178,7 +185,7 @@ describe("GET /api/tickets/:ticketId/actions", () => {
     await prisma.actionTaken.create({
       data: {
         ticketId: ticket.id,
-        actionAt: new Date(),
+        actionAt: new Date(Date.now() + 50), // padded — see validCreateBody() above
         description: "Audited action.",
         performedById: staff1Id,
         createdById: staff2Id,
@@ -423,7 +430,7 @@ describe("PATCH /api/tickets/:ticketId/actions/:actionId", () => {
     return prisma.actionTaken.create({
       data: {
         ticketId,
-        actionAt: new Date(),
+        actionAt: new Date(Date.now() + 50), // padded — see validCreateBody() above
         description: "Original description.",
         result: "Original result.",
         status: "Completed",
@@ -542,7 +549,7 @@ describe("POST /api/tickets/:ticketId/actions/:actionId/complete", () => {
     return prisma.actionTaken.create({
       data: {
         ticketId,
-        actionAt: new Date(),
+        actionAt: new Date(Date.now() + 50), // padded — see validCreateBody() above
         description: "Planned work.",
         status: "Planned",
         performedById: staff1Id,
@@ -584,7 +591,7 @@ describe("POST /api/tickets/:ticketId/actions/:actionId/complete", () => {
     const action = await prisma.actionTaken.create({
       data: {
         ticketId: ticket.id,
-        actionAt: new Date(),
+        actionAt: new Date(Date.now() + 50), // padded — see validCreateBody() above
         description: "Already done.",
         status: "Completed",
         result: "Done already.",
@@ -607,7 +614,7 @@ describe("POST /api/tickets/:ticketId/actions/:actionId/complete", () => {
     const action = await prisma.actionTaken.create({
       data: {
         ticketId: ticket.id,
-        actionAt: new Date(),
+        actionAt: new Date(Date.now() + 50), // padded — see validCreateBody() above
         description: "Cancelled work.",
         status: "Cancelled",
         cancelledAt: new Date(),
@@ -655,7 +662,7 @@ describe("POST /api/tickets/:ticketId/actions/:actionId/cancel", () => {
     return prisma.actionTaken.create({
       data: {
         ticketId,
-        actionAt: new Date(),
+        actionAt: new Date(Date.now() + 50), // padded — see validCreateBody() above
         description: "Planned work to cancel.",
         status: "Planned",
         performedById: staff1Id,
@@ -684,7 +691,7 @@ describe("POST /api/tickets/:ticketId/actions/:actionId/cancel", () => {
     const action = await prisma.actionTaken.create({
       data: {
         ticketId: ticket.id,
-        actionAt: new Date(),
+        actionAt: new Date(Date.now() + 50), // padded — see validCreateBody() above
         description: "Completed work to cancel.",
         status: "Completed",
         result: "Done.",
@@ -719,7 +726,7 @@ describe("POST /api/tickets/:ticketId/actions/:actionId/cancel", () => {
     const action = await prisma.actionTaken.create({
       data: {
         ticketId: ticket.id,
-        actionAt: new Date(),
+        actionAt: new Date(Date.now() + 50), // padded — see validCreateBody() above
         description: "Already cancelled.",
         status: "Cancelled",
         cancelledAt: new Date(),
@@ -769,7 +776,7 @@ describe("DELETE /api/tickets/:ticketId/actions/:actionId", () => {
     const action = await prisma.actionTaken.create({
       data: {
         ticketId: ticket.id,
-        actionAt: new Date(),
+        actionAt: new Date(Date.now() + 50), // padded — see validCreateBody() above
         description: "Should never be deletable.",
         performedById: staff1Id,
         createdById: staff1Id,

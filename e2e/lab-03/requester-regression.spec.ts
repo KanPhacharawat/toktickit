@@ -16,8 +16,10 @@ import { ACCOUNTS, apiSession, createTicketAs, signIn } from "./helpers.js";
 test("E2E-07 — a signed-in Requester creates, finds, and manages a ticket with an attachment", async ({
   page,
 }) => {
+  // Lab 4 (ui-spec.md §2) — the Requester now lands on the Dashboard.
   await signIn(page, ACCOUNTS.requesterA.email);
-  await expect(page.getByRole("heading", { name: /^my tickets$/i })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 })).toContainText(/welcome/i);
+  await gotoMyTickets(page);
 
   // No Development Requester selector anywhere (AC-19).
   await expect(page.getByLabel(/development requester/i)).toHaveCount(0);

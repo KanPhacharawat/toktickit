@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { test, expect, type Page } from "@playwright/test";
 import {
   ACCOUNTS,
@@ -17,9 +18,44 @@ import {
 //   E2E-12  Assign and reassign             (AC-36, AC-37)
 //   E2E-13  Public vs Internal separation   (AC-04, AC-27, AC-43)
 //   E2E-14  Stale update across two sessions (AC-44)
+//
+// Lab 4 moved status changes out of "Ticket operations" into their own
+// "Ticket workflow" panel (client/src/TicketWorkflow.tsx), replaced the
+// simple "Mark Resolved?" confirm with a resolution-summary + gate-checklist
+// dialog, and made the Requester land on the Dashboard rather than My
+// Tickets after sign-in (ui-spec.md §2) — these tests are updated in place
+// for both, per docs/lab-04/tests.md R-01.
 
 const operations = (page: Page) => page.getByRole("region", { name: /^ticket operations$/i });
 const ownerText = (page: Page) => operations(page).locator("p.zen-readonly-value").first();
+const workflow = (page: Page) => page.getByTestId("ticket-workflow");
+
+/** Navigates a freshly signed-in Requester from the Dashboard to My Tickets and opens `ticket`. */
+async function openAsRequester(page: Page, ticket: FixtureTicket) {
+  await page
+    .getByRole("navigation", { name: /^main$/i })
+    .getByRole("button", { name: /^my tickets$/i })
+    .click();
+  await page.getByLabel(/^search$/i).fill(ticket.ticketNumber);
+  await page.getByRole("button", { name: /^search$/i }).click();
+  await page.getByRole("button", { name: new RegExp(ticket.ticketNumber) }).click();
+}
+
+/** Adds and completes one Action Taken via the API, satisfying the resolution gate. */
+async function completeOneAction(ticketId: number) {
+  const api = await apiSession(ACCOUNTS.staff1.email);
+  const created = await api.post(`/api/tickets/${ticketId}/actions`, {
+    data: {
+      clientRequestId: randomUUID(),
+      actionAt: new Date(Date.now() + 60_000).toISOString(),
+      description: "Diagnosed and applied a fix.",
+      status: "Completed",
+      result: "Issue resolved; verified with the requester.",
+    },
+  });
+  expect(created.status()).toBe(201);
+  await api.dispose();
+}
 
 async function search(page: Page, text: string) {
   await page.getByLabel(/^search$/i).fill(text);
@@ -115,11 +151,9 @@ test("E2E-11 — IT Staff claim a ticket, set IT Priority, and move it to Resolv
   await openTicketFromQueue(page, ticket);
   await expect(ownerText(page)).toHaveText("Unassigned");
 
-  // Until claimed there is no way to change priority or move the ticket forward.
+  // Until claimed there is no way to change IT Priority.
   await expect(page.getByLabel("IT Priority", { exact: true })).toHaveCount(0);
   await expect(operations(page)).toContainText("Claim this ticket to change IT Priority.");
-  await expect(operations(page)).toContainText("Read-only status: New.");
-  await expect(page.getByLabel("Change status to", { exact: true })).toHaveCount(0);
 
   // Claim.
   await operations(page).getByRole("button", { name: /^claim ticket$/i }).click();
@@ -135,30 +169,41 @@ test("E2E-11 — IT Staff claim a ticket, set IT Priority, and move it to Resolv
   await expect(operations(page).getByRole("status")).toHaveText("IT Priority updated to HIGH.");
   await expect(operations(page)).toContainText("Requested by requester: Medium");
 
-  // Status: New -> Open -> In Progress are direct.
-  const statusSelect = page.getByLabel("Change status to", { exact: true });
-  const update = operations(page).getByRole("button", { name: /^update status$/i });
+  // Status: New -> Open -> In Progress are direct (Ticket workflow panel).
+  const statusSelect = workflow(page).getByLabel("Change status to", { exact: true });
+  const update = workflow(page).getByRole("button", { name: /^update status$/i });
   await statusSelect.selectOption({ label: "Open" });
   await update.click();
+  await workflow(page).getByRole("dialog", { name: /^change status to open$/i }).getByRole("button", { name: /^update status$/i }).click();
   await expect(page.getByTestId("detail-status")).toHaveText("Open");
   await statusSelect.selectOption({ label: "In Progress" });
   await update.click();
+  await workflow(page).getByRole("dialog", { name: /^change status to in progress$/i }).getByRole("button", { name: /^update status$/i }).click();
   await expect(page.getByTestId("detail-status")).toHaveText("In Progress");
 
-  // Resolved needs confirmation: Keep Current Status sends nothing.
+  // Resolving needs a completed action (BR-20) and a summary: Cancel sends nothing.
+  // Done directly via the API, so the already-open page doesn't know about
+  // it; reopen the ticket to pick up the fresh transitions/gate data.
+  await completeOneAction(ticket.id);
+  await openTicketFromQueue(page, ticket);
   await statusSelect.selectOption({ label: "Resolved" });
   await update.click();
-  const dialog = page.getByRole("dialog", { name: /confirm resolved/i });
-  await expect(dialog).toContainText(`Mark ticket ${ticket.ticketNumber} as Resolved?`);
-  await dialog.getByRole("button", { name: /^keep current status$/i }).click();
+  const dialog = page.getByRole("dialog", { name: /^resolve ticket/i });
+  await expect(dialog).toContainText(ticket.ticketNumber);
+  await dialog.getByRole("button", { name: /^cancel$/i }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByTestId("detail-status")).toHaveText("In Progress");
 
+  // The picker resets its selection on every "Update Status" click
+  // (regardless of the resulting dialog's outcome), so Resolved must be
+  // picked again before reopening it.
+  await statusSelect.selectOption({ label: "Resolved" });
   await update.click();
-  await page
-    .getByRole("dialog", { name: /confirm resolved/i })
-    .getByRole("button", { name: /^mark resolved$/i })
-    .click();
+  const resolveDialog = page.getByRole("dialog", { name: /^resolve ticket/i });
+  await resolveDialog
+    .getByLabel(/^resolution summary/i)
+    .fill("Reinstalled the driver and verified the fix with the requester.");
+  await resolveDialog.getByRole("button", { name: /^confirm resolve$/i }).click();
   await expect(page.getByTestId("detail-status")).toHaveText("Resolved");
 
   // The queue reflects every change.
@@ -170,11 +215,9 @@ test("E2E-11 — IT Staff claim a ticket, set IT Priority, and move it to Resolv
   await expect(row).toContainText("You");
   await expect(row).toContainText("IT: High");
 
-  // The Requester sees the new status and the assigned owner.
+  // The Requester (lands on the Dashboard, ui-spec.md §2) sees the new status and owner.
   const requester = await openSessionAs(browser, ACCOUNTS.requesterA.email);
-  await requester.page.getByLabel(/^search$/i).fill(ticket.ticketNumber);
-  await requester.page.getByRole("button", { name: /^search$/i }).click();
-  await requester.page.getByRole("button", { name: new RegExp(ticket.ticketNumber) }).click();
+  await openAsRequester(requester.page, ticket);
   await expect(requester.page.getByTestId("detail-status")).toHaveText("Resolved");
   await expect(requester.page.getByText("IT Staff 1", { exact: true })).toBeVisible();
   await requester.context.close();
@@ -193,12 +236,14 @@ test("E2E-12 — a ticket is assigned, reassigned, and then read-only for the fo
   await operations(page).getByRole("button", { name: /^assign$/i }).click();
   await expect(ownerText(page)).toHaveText("IT Staff 2");
 
-  // IT Staff 1 no longer owns it: read-only, with the reason.
+  // IT Staff 1 no longer owns it: reassignment is read-only, with the reason.
+  // (Lab 4 — status changes are role-gated, not owner-gated, except for the
+  // specific transitions that require an owner (BR-19); reassignment stays
+  // owner-only, which is what this test is really about.)
   await expect(operations(page)).toContainText(
     "Only the ticket owner or an administrator can reassign this ticket.",
   );
   await expect(page.getByLabel("Reassign to", { exact: true })).toHaveCount(0);
-  await expect(page.getByLabel("Change status to", { exact: true })).toHaveCount(0);
 
   // IT Staff 2 owns it and reassigns to IT Staff 3; the current owner is not offered.
   const staff2 = await openSessionAs(browser, ACCOUNTS.staff2.email);
@@ -248,12 +293,11 @@ test("E2E-13 — Internal Notes never reach the Requester; Public Comments rende
   await expect(page.getByTestId("public-thread-list")).not.toContainText(noteText);
   await expect(page.getByTestId("public-thread-list").locator("b, script")).toHaveCount(0);
 
-  // The Requester sees only the public comment, as literal text.
+  // The Requester (lands on the Dashboard, ui-spec.md §2) sees only the
+  // public comment, as literal text.
   const requester = await openSessionAs(browser, ACCOUNTS.requesterA.email);
   const rp = requester.page;
-  await rp.getByLabel(/^search$/i).fill(ticket.ticketNumber);
-  await rp.getByRole("button", { name: /^search$/i }).click();
-  await rp.getByRole("button", { name: new RegExp(ticket.ticketNumber) }).click();
+  await openAsRequester(rp, ticket);
   const thread = rp.getByTestId("public-thread-list");
   await expect(thread).toContainText(publicText);
   await expect(thread.locator("b, script")).toHaveCount(0);

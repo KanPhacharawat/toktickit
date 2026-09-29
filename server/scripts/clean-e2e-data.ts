@@ -38,8 +38,12 @@ async function main() {
   });
 
   // Lab 3 — accounts the user-administration specs create use the reserved
-  // `@toktickit.test` domain (tests.md §1.2). Their tickets are gone by now;
-  // release any that still name one as owner, then remove the accounts.
+  // `@toktickit.test` domain (tests.md §1.2). Their tickets are gone by now
+  // if tagged "E2E "; release any untagged ticket that still names one as
+  // owner, and delete any untagged ticket where one is the requester
+  // (Ticket.requesterId is onDelete: Restrict — it can't be nulled out, so
+  // a stray fixture ticket without the tag would otherwise block the user
+  // delete below indefinitely), then remove the accounts.
   const e2eUsers = await prisma.user.findMany({
     where: { email: { endsWith: "@toktickit.test" } },
     select: { id: true },
@@ -50,6 +54,19 @@ async function main() {
       where: { ticketOwnerId: { in: e2eUserIds } },
       data: { ticketOwnerId: null },
     });
+
+    const orphanTicketIds = (
+      await prisma.ticket.findMany({
+        where: { requesterId: { in: e2eUserIds } },
+        select: { id: true },
+      })
+    ).map((t) => t.id);
+    if (orphanTicketIds.length > 0) {
+      await prisma.actionTaken.deleteMany({ where: { ticketId: { in: orphanTicketIds } } });
+      await prisma.ticketStatusHistory.deleteMany({ where: { ticketId: { in: orphanTicketIds } } });
+      await prisma.ticket.deleteMany({ where: { id: { in: orphanTicketIds } } });
+    }
+
     await prisma.user.deleteMany({ where: { id: { in: e2eUserIds } } });
   }
 

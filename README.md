@@ -584,11 +584,12 @@ the IT Staff and Administrator sides of the service desk.
   tickets intact
 - Accessibility (keyboard flows and axe scans) and responsive checks for every role
 
-### Lab 4 — database foundation for Actions Taken and workflow
+### Lab 4 — Actions Taken, ticket workflow, dashboards, and hardening
 
-Lab 4 adds the data layer for Actions Taken, the Ticket resolution workflow,
-and dashboards (see [`docs/lab-04/specification.md`](docs/lab-04/specification.md)
-for the full sprint scope):
+Lab 4 adds Actions Taken, the Ticket resolution workflow, dashboards, and
+navigation for every role, then a regression/hardening pass over Labs 1–3
+(see [`docs/lab-04/specification.md`](docs/lab-04/specification.md) for the
+full sprint scope):
 
 - `ActionTaken` and `TicketStatusHistory` models, and new `Ticket` columns
   (`version`, `resolutionSummary`, `resolvedAt`, `closedAt`, `cancelledAt`,
@@ -602,9 +603,26 @@ for the full sprint scope):
   Tickets, 0/1/many Actions Taken per Ticket, a Planned action, a Cancelled
   action, an action performed by IT Staff other than the Ticket Owner, and a
   Requester with zero Tickets
-
-The Actions Taken and Ticket-workflow **API and UI** are implemented in later
-Lab 4 issues; this stage only prepares the schema, migration, and seed data.
+- Actions Taken API and UI: create/edit/complete/cancel, idempotent create
+  (`clientRequestId`), optimistic concurrency (`version`), and a Closed/
+  Cancelled Ticket locks the section read-only
+- Ticket workflow: `POST /api/tickets/:ticketId/status` replaces Lab 3's
+  `PATCH .../status` (retired — 404), enforcing the role/status transition
+  matrix and the Resolved-state resolution gate (owner present, ≥1 Completed
+  action, no Planned action, follow-ups acknowledged, a resolution summary);
+  a Requester may indicate "problem appears resolved" (advisory only) and
+  Reopen a Resolved Ticket they own; every change is recorded in
+  `TicketStatusHistory`
+- Requester, IT Staff, and Administrator dashboards with metric cards,
+  drill-down navigation, and a role-specific landing page after login
+- A navigation shell with a Dashboard nav item per role, a mobile hamburger
+  drawer, and Forbidden/Not Found route guards
+- `GET /api/health` reports real DB connectivity (`200 {status:"ok",
+  db:"up", ...}` / `503 {status:"degraded", db:"down"}`), replacing the
+  Lab 1 stub
+- A regression/hardening pass: the full Lab 1–3 suite re-verified against
+  the Lab 4 schema/API, duplicate-submit and form-resilience coverage across
+  every form, and a performance smoke test on the dashboard endpoints
 
 ### API endpoints
 
@@ -628,7 +646,14 @@ is proven by direct API calls as well as by the UI.
 | `POST` | `/api/tickets/:ticketId/claim` | IT Staff, Administrator |
 | `PATCH` | `/api/tickets/:ticketId/owner` | IT Staff (unassigned), Owner, Administrator |
 | `PATCH` | `/api/tickets/:ticketId/it-priority` | Owner, Administrator |
-| `PATCH` | `/api/tickets/:ticketId/status` | Owner, Administrator |
+| `POST` | `/api/tickets/:ticketId/status` | Per the role/status transition matrix (`docs/lab-04/api-spec.md` §3) |
+| `GET` | `/api/tickets/:ticketId/transitions` | Requester (own), IT Staff, Administrator |
+| `GET` | `/api/tickets/:ticketId/status-history` | Requester (own), IT Staff, Administrator |
+| `POST` | `/api/tickets/:ticketId/requester-resolution` | Requester (own) |
+| `GET`, `POST` | `/api/tickets/:ticketId/actions` | Requester (own, read-only), IT Staff, Administrator |
+| `PATCH` | `/api/tickets/:ticketId/actions/:actionId` | IT Staff, Administrator |
+| `POST` | `/api/tickets/:ticketId/actions/:actionId/complete` | IT Staff, Administrator |
+| `POST` | `/api/tickets/:ticketId/actions/:actionId/cancel` | IT Staff, Administrator |
 | `GET`, `POST` | `/api/tickets/:ticketId/public-comments` | Requester (own), IT Staff, Administrator |
 | `GET`, `POST` | `/api/tickets/:ticketId/internal-notes` | IT Staff, Administrator |
 | `POST` | `/api/tickets/:ticketId/problem-resolved` | Requester (own) |
@@ -637,11 +662,18 @@ is proven by direct API calls as well as by the UI.
 | `GET`, `POST` | `/api/admin/users` | Administrator |
 | `GET`, `PATCH` | `/api/admin/users/:userId` | Administrator |
 | `POST` | `/api/admin/users/:userId/initial-password` | Administrator |
+| `GET` | `/api/dashboard/requester` | Requester |
+| `GET` | `/api/dashboard/staff` | IT Staff, Administrator |
+| `GET` | `/api/dashboard/admin` | Administrator |
+
+`PATCH /api/tickets/:ticketId/status` (Lab 3) is retired — it now 404s for
+every role; use `POST` above instead.
 
 The full request and response contract, including error shapes, is in
-[`docs/lab-03/api-spec.md`](docs/lab-03/api-spec.md). The Lab 2 routes under
+[`docs/lab-04/api-spec.md`](docs/lab-04/api-spec.md) (superseding
+`docs/lab-03/api-spec.md`, kept for history). The Lab 2 routes under
 `/api/requesters/:requesterId/...` and `/api/development-requesters` were
-replaced by the routes above; the mapping is at the end of that document.
+replaced by the routes above; the mapping is at the end of the Lab 3 document.
 
 ## Documentation
 

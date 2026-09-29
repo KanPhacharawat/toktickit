@@ -3,7 +3,7 @@ import { useOptionalAuth } from "./AuthContext.js";
 import ProfileMenu from "./ProfileMenu.js";
 
 /** The Requester-facing screens reachable from the shell nav. */
-export type AppView = "tickets" | "create";
+export type AppView = "dashboard" | "tickets" | "create";
 
 /** IT Staff and Administrator destinations (Lab 4 ui-spec.md §2). */
 export type StaffView = "dashboard" | "users" | "queue";
@@ -58,6 +58,14 @@ export default function AppShell({
               className="d-flex flex-wrap align-items-center gap-3"
               aria-label="Main"
             >
+              <button
+                type="button"
+                className="zen-nav-link"
+                aria-current={view === "dashboard" ? "page" : undefined}
+                onClick={() => onNavigate!("dashboard")}
+              >
+                Dashboard
+              </button>
               <button
                 type="button"
                 className="zen-nav-link"

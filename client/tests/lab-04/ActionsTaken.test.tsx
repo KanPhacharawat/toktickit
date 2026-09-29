@@ -148,6 +148,13 @@ function mockShell() {
     urgentTickets: [],
     recentTickets: [],
   });
+  vi.spyOn(api, "fetchRequesterDashboard").mockResolvedValue({
+    generatedAt: "2026-10-01T00:00:00.000Z",
+    timeZone: "Asia/Bangkok",
+    metrics: [],
+    needsAttention: [],
+    recentTickets: [],
+  });
 }
 
 /** Renders the app as IT Staff and opens the given ticket from the queue. */
@@ -213,6 +220,8 @@ async function openRequesterDetail(
   vi.spyOn(api, "fetchActionsTaken").mockResolvedValue({ items: actions, total: actions.length });
 
   render(<App />);
+  const nav = await screen.findByRole("navigation", { name: /main/i });
+  await user.click(within(nav).getByRole("button", { name: /^my tickets$/i }));
   await user.click(await screen.findByRole("button", { name: new RegExp(detail.ticketNumber) }));
   await screen.findByTestId("detail-ticket-number");
 }

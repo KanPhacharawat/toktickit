@@ -137,6 +137,13 @@ function mockShell() {
     urgentTickets: [],
     recentTickets: [],
   });
+  vi.spyOn(api, "fetchRequesterDashboard").mockResolvedValue({
+    generatedAt: "2026-10-01T00:00:00.000Z",
+    timeZone: "Asia/Bangkok",
+    metrics: [],
+    needsAttention: [],
+    recentTickets: [],
+  });
 }
 
 async function openStaffDetail(
@@ -201,6 +208,8 @@ async function openRequesterDetail(
   vi.spyOn(api, "fetchTransitions").mockResolvedValue(transitionsResponse);
 
   render(<App />);
+  const nav = await screen.findByRole("navigation", { name: /main/i });
+  await user.click(within(nav).getByRole("button", { name: /^my tickets$/i }));
   await user.click(await screen.findByRole("button", { name: new RegExp(detail.ticketNumber) }));
   await screen.findByTestId("detail-ticket-number");
   await screen.findByTestId("ticket-workflow");

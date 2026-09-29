@@ -185,6 +185,8 @@ export interface TicketListParams {
   categoryId?: string;
   requestedPriority?: string;
   currentStatus?: string;
+  /** api-spec.md §4.1 — dashboard drill-down: an exact TicketStatus, or the "open" alias. */
+  status?: string;
   sortBy?: SortableField;
   sortOrder?: SortOrder;
   page?: number;
@@ -1433,6 +1435,16 @@ export interface AdminDashboardData extends StaffDashboardData {
   users: { active: Record<AdminRole, number>; inactive: number };
 }
 
+/** api-spec.md §4.1 — Requester only. */
+export interface RequesterDashboardData {
+  generatedAt: string;
+  timeZone: string;
+  metrics: DashboardMetric[];
+  /** Waiting for Requester or Resolved tickets, capped at 5. */
+  needsAttention: DashboardTicketSummary[];
+  recentTickets: DashboardTicketSummary[];
+}
+
 async function dashboardFetch<T>(path: string): Promise<T> {
   let res: Response;
   try {
@@ -1449,6 +1461,11 @@ async function dashboardFetch<T>(path: string): Promise<T> {
     throw toApiError(res, body, "Could not load the dashboard. Please try again.");
   }
   return body as T;
+}
+
+/** api-spec.md §4.1 — Requester only. */
+export function fetchRequesterDashboard(): Promise<RequesterDashboardData> {
+  return dashboardFetch<RequesterDashboardData>("/api/dashboard/requester");
 }
 
 /** api-spec.md §4.2 — IT Staff, Administrator. */

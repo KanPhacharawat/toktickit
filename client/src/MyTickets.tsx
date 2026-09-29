@@ -14,7 +14,8 @@ import {
   type TicketListRow,
 } from "./api.js";
 import { useAuth } from "./AuthContext.js";
-import { priorityLabel } from "./ticketFormRules.js";
+import { priorityIcon, priorityLabel } from "./ticketFormRules.js";
+import { statusIcon } from "./actionsTakenRules.js";
 
 /** The filter/search/sort/page state that drives one request. */
 interface ListControls {
@@ -519,11 +520,13 @@ export default function MyTickets({
                       <span
                         className={`zen-badge zen-priority-${row.requestedPriority.toLowerCase()}`}
                       >
+                        {priorityIcon(row.requestedPriority)}
                         {priorityLabel(row.requestedPriority)}
                       </span>
                     </td>
                     <td>
                       <span className="zen-badge zen-status">
+                        {statusIcon(row.currentStatus)}
                         {statusLabel(row.currentStatus)}
                       </span>
                       {row.problemAppearsResolvedAt && (

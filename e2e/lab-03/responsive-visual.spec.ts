@@ -506,7 +506,7 @@ for (const [viewport, size] of VIEWPORT_LIST) {
 
     await page.getByLabel(/^sort by$/i).selectOption("itPriority");
     await page.getByLabel(/^order$/i).selectOption("desc");
-    await expect(page.getByTestId("queue-rows").getByRole("row").first()).toContainText("IT: Urgent");
+    await expect(page.getByTestId("queue-rows").getByRole("row").first()).toContainText(/IT:\s*.*Urgent/);
     await shot("sorted-it-priority");
     await page.getByRole("button", { name: /^hide filters/i }).click();
 

@@ -8,6 +8,7 @@ import {
 import { useAuth } from "./AuthContext.js";
 import Forbidden from "./Forbidden.js";
 import type { MyTicketsDrillDownFilters } from "./MyTickets.js";
+import { statusIcon } from "./actionsTakenRules.js";
 
 /** Turns InProgress into "In Progress" for display. */
 function statusLabel(status: string): string {
@@ -86,6 +87,7 @@ function TicketRow({
         {ticket.summary}
       </span>
       <span className="zen-badge zen-status">
+        {statusIcon(ticket.currentStatus)}
         {statusLabel(ticket.currentStatus)}
       </span>
       <span

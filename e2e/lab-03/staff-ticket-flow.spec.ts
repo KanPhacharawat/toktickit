@@ -111,7 +111,7 @@ test("E2E-10 — IT Staff find work with quick views, search, filter, sort and p
   await page.getByLabel(/^it priority$/i).selectOption("URGENT");
   await expect(page.getByTestId("queue-rows").getByRole("row")).toHaveCount(1);
   await expect(page.getByTestId("queue-rows")).toContainText(urgent.ticketNumber);
-  await expect(page.getByTestId("queue-rows")).toContainText("IT: Urgent");
+  await expect(page.getByTestId("queue-rows")).toContainText(/IT:\s*.*Urgent/);
   await page.getByLabel(/^it priority$/i).selectOption("");
 
   // Sort by IT Priority, highest first.
@@ -119,8 +119,8 @@ test("E2E-10 — IT Staff find work with quick views, search, filter, sort and p
   await page.getByLabel(/^order$/i).selectOption("desc");
   const rows = page.getByTestId("queue-rows").getByRole("row");
   await expect(rows.first()).toContainText(urgent.ticketNumber);
-  await expect(rows.first()).toContainText("IT: Urgent");
-  await expect(rows.nth(1)).toContainText("IT: High");
+  await expect(rows.first()).toContainText(/IT:\s*.*Urgent/);
+  await expect(rows.nth(1)).toContainText(/IT:\s*.*High/);
 
   // Page through: ten per page, then the last one.
   await page.getByLabel(/^per page$/i).selectOption("10");
@@ -213,7 +213,7 @@ test("E2E-11 — IT Staff claim a ticket, set IT Priority, and move it to Resolv
   const row = page.getByTestId("queue-rows").getByRole("row").first();
   await expect(row).toContainText("Resolved");
   await expect(row).toContainText("You");
-  await expect(row).toContainText("IT: High");
+  await expect(row).toContainText(/IT:\s*.*High/);
 
   // The Requester (lands on the Dashboard, ui-spec.md §2) sees the new status and owner.
   const requester = await openSessionAs(browser, ACCOUNTS.requesterA.email);

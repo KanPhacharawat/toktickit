@@ -18,8 +18,8 @@ import { useAuth } from "./AuthContext.js";
 import ActionsTakenSection from "./ActionsTakenSection.js";
 import TicketWorkflow from "./TicketWorkflow.js";
 import ThreadSection from "./ThreadSection.js";
-import { priorityLabel } from "./ticketFormRules.js";
-import { isTicketLocked, statusLabel } from "./actionsTakenRules.js";
+import { priorityIcon, priorityLabel } from "./ticketFormRules.js";
+import { isTicketLocked, statusIcon, statusLabel } from "./actionsTakenRules.js";
 
 /** api-spec.md §2.2 — conflicts and rule violations that resolve with a silent reload. */
 const RELOAD_CODES = new Set([
@@ -153,12 +153,16 @@ export default function StaffTicketDetail({
 
       {ticket && (
         <div className="d-flex flex-wrap gap-2 mb-3">
-          <span className="zen-badge zen-status">{statusLabel(ticket.currentStatus)}</span>
+          <span className="zen-badge zen-status">
+            {statusIcon(ticket.currentStatus)}
+            {statusLabel(ticket.currentStatus)}
+          </span>
           <span className={`zen-badge zen-priority-${ticket.requestedPriority.toLowerCase()}`}>
+            {priorityIcon(ticket.requestedPriority)}
             {priorityLabel(ticket.requestedPriority)}
           </span>
           <span className={`zen-badge zen-priority-${ticket.itPriority.toLowerCase()}`}>
-            {`IT: ${priorityLabel(ticket.itPriority)}`}
+            {`IT: ${priorityIcon(ticket.itPriority)}${priorityLabel(ticket.itPriority)}`}
           </span>
           <span className="zen-badge zen-status">
             {ticket.ticketOwner
@@ -561,6 +565,7 @@ function OperationsCard({
         ) : (
           <>
             <span className={`zen-badge zen-priority-${ticket.itPriority.toLowerCase()}`}>
+              {priorityIcon(ticket.itPriority)}
               {priorityLabel(ticket.itPriority)}
             </span>
             <p className="text-secondary small mt-1 mb-0">

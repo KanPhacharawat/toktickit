@@ -2,7 +2,6 @@
 
 > Location in repo: `docs/lab-04/tests.md`
 > Related: [`specification.md`](./specification.md) · [`ui-spec.md`](./ui-spec.md) · [`api-spec.md`](./api-spec.md)
-> Status: Draft v1.0 — planned before implementation. `Final` column is updated to `Pass`/`Fail` with evidence as each test is written and run (Issue #15).
 
 Naming convention (matches Lab 1–3): server unit/API tests in `server/tests/lab-04/*.test.ts`, UI component tests in `client/tests/lab-04/*.test.tsx`, E2E specs in `e2e/lab-04/*.spec.ts`.
 

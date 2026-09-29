@@ -111,6 +111,11 @@ export function statusLabel(status: string): string {
   return status.replace(/([a-z])([A-Z])/g, "$1 $2");
 }
 
+/** ui-spec.md §1.1 — Cancelled status badges get a strike icon, not color alone. */
+export function statusIcon(status: string): string {
+  return status === "Cancelled" ? "✕ " : "";
+}
+
 export function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString();
 }

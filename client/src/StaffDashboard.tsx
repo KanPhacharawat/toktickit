@@ -10,7 +10,7 @@ import {
 } from "./api.js";
 import { useAuth } from "./AuthContext.js";
 import Forbidden from "./Forbidden.js";
-import { priorityLabel } from "./ticketFormRules.js";
+import { priorityIcon, priorityLabel } from "./ticketFormRules.js";
 import type { StaffQueueDrillDownFilters } from "./StaffTicketQueue.js";
 import type { UserListDrillDownFilters } from "./UserManagement.js";
 
@@ -99,6 +99,7 @@ function TicketRow({
       <span
         className={`zen-badge zen-priority-${ticket.itPriority.toLowerCase()}`}
       >
+        {priorityIcon(ticket.itPriority)}
         {priorityLabel(ticket.itPriority)}
       </span>
       <span className="zen-badge zen-status">
@@ -398,7 +399,7 @@ export default function StaffDashboard({
                         })
                       }
                     >
-                      {`${priorityLabel(entry.priority)}: ${entry.value}`}
+                      {`${priorityIcon(entry.priority)}${priorityLabel(entry.priority)}: ${entry.value}`}
                     </button>
                   ))}
                 </div>

@@ -17,7 +17,8 @@ import {
   type SortOrder,
 } from "./api.js";
 import { useAuth } from "./AuthContext.js";
-import { priorityLabel } from "./ticketFormRules.js";
+import { priorityIcon, priorityLabel } from "./ticketFormRules.js";
+import { statusIcon } from "./actionsTakenRules.js";
 
 /** Turns InProgress into "In Progress" for display. */
 function statusLabel(status: string): string {
@@ -647,16 +648,20 @@ export default function StaffTicketQueue({
                       <span
                         className={`zen-badge zen-priority-${row.requestedPriority.toLowerCase()}`}
                       >
+                        {priorityIcon(row.requestedPriority)}
                         {priorityLabel(row.requestedPriority)}
                       </span>
                     </td>
                     <td>
                       <span className={`zen-badge zen-priority-${row.itPriority.toLowerCase()}`}>
-                        {`IT: ${priorityLabel(row.itPriority)}`}
+                        {`IT: ${priorityIcon(row.itPriority)}${priorityLabel(row.itPriority)}`}
                       </span>
                     </td>
                     <td>
-                      <span className="zen-badge zen-status">{statusLabel(row.currentStatus)}</span>
+                      <span className="zen-badge zen-status">
+                        {statusIcon(row.currentStatus)}
+                        {statusLabel(row.currentStatus)}
+                      </span>
                       {row.problemAppearsResolvedAt && (
                         <>
                           {" "}

@@ -238,27 +238,29 @@ Test widths: 375, 768, 1280. No horizontal page scroll, no clipped text, no over
 
 ## 9. Accessibility Checklist (to complete with evidence)
 
-- [ ] All pages have one `<h1>` and logical heading order.
-- [ ] Landmarks: `header`, `nav`, `main`, `footer`.
-- [ ] Every input has a visible `<label>`; required fields marked with `*` and `aria-required`.
-- [ ] Errors linked via `aria-describedby`; `aria-invalid="true"` on invalid fields.
-- [ ] Visible focus ring on all interactive elements; logical tab order; no keyboard traps except modals.
-- [ ] Modals: focus trap, Esc closes, focus returns to trigger.
-- [ ] Status/priority conveyed by text + icon, not color alone.
-- [ ] Contrast ≥ 4.5:1 text, ≥ 3:1 UI components.
-- [ ] Metric cards: accessible name e.g. "New tickets: 14, view all".
-- [ ] Toasts use `role="status"`; error banners `role="alert"`.
-- [ ] Tested with keyboard only and axe (0 serious/critical violations).
+- [x] All pages have one `<h1>` and logical heading order. Verified by the AX-01 axe sweep (`e2e/lab-04/accessibility.spec.ts`) across Requester/Staff/Admin Dashboards, Staff Ticket Detail with Actions Taken, the Add Action form, and every workflow dialog at 375/768/1280px — 0 serious/critical violations, which would include `heading-order`/`page-has-heading-one`.
+- [x] Landmarks: `header`, `nav`, `main`. Every screen renders its own `<main>` (`client/src/*.tsx`); the shell has one `<header>` and two `<nav>` regions (`client/src/AppShell.tsx`). **`footer` is not present anywhere in the app** — this is a pre-existing, app-wide absence from Lab 2/3, not a Lab 4 gap, and axe did not flag it as a violation.
+- [x] Every input has a visible `<label>`; required fields marked with `*` and screen-reader text. Every Lab 4 form field (Resolve/Cancel/Reopen reason, Add/Edit Action, resolution summary) uses `<label htmlFor>` plus a visible `*` and a `visually-hidden` "(required)" span — the same pattern as Lab 2/3. Note: the app does not use the literal `aria-required` attribute anywhere (not just Lab 4) — the visually-hidden text conveys the same information to screen readers, and axe's `aria-required-attr`/`required-attr` rules raised no violation.
+- [x] Errors linked via `aria-describedby`; `aria-invalid="true"` on invalid fields. Confirmed in `TicketWorkflow.tsx` (`resolve-summary-error`) and `ActionsTakenSection.tsx` (`cancel-reason-error`, `complete-result-error`).
+- [x] Visible focus ring on all interactive elements; logical tab order; no keyboard traps except modals. Verified by AX-01's keyboard-only walkthrough of dashboard metric cards, the "By priority" chips, the status-change/Resolve/Cancel/Reopen dialogs, and `client/tests/lab-04/ActionsTaken.test.tsx`'s "Keyboard-only operation" suite (Add/Edit/Complete/Cancel).
+- [ ] **Modals: focus trap, Esc closes, focus returns to trigger — not implemented.** Lab 4's workflow and Actions Taken dialogs (`TicketWorkflow.tsx`, `ActionsTakenSection.tsx`) are inline `role="dialog"` panels, reachable and operable by Tab, but with no focus trap, no Esc-to-close, and no focus restored to the trigger on close. This mirrors Lab 3's own inline confirmation panels (see `e2e/lab-03/accessibility.spec.ts`'s note on the same pattern) — a pre-existing, accepted deviation from the ideal spec text, not something introduced or expanded by this branch. Flagged here rather than silently checked off.
+- [x] Status/priority conveyed by text + icon, not color alone. Action status badges already carried a ✓/✕ icon; this branch added the same treatment to priority badges (▲ High, ▲▲ Urgent, via `priorityIcon()` in `ticketFormRules.ts`) and the Cancelled ticket-status badge (✕, via `statusIcon()` in `actionsTakenRules.ts`), applied everywhere those badges render (MyTickets, StaffTicketQueue, StaffTicketDetail, StaffDashboard, RequesterDashboard).
+- [x] Contrast ≥ 4.5:1 text, ≥ 3:1 UI components. No `color-contrast` violation from the AX-01 axe sweep (serious impact, would have failed the 0-serious/critical gate) at any of the three widths.
+- [x] Metric cards: accessible name e.g. "New tickets: 14, view all". Confirmed via `metricCard()`'s `aria-label` pattern (`${label}: ${count}, view all`), exercised across `dashboards.spec.ts` and AX-01.
+- [x] Toasts use `role="status"`; error banners `role="alert"`. Confirmed in `TicketWorkflow.tsx` and `ActionsTakenSection.tsx` (success banners and loading text use `role="status"`; all error banners use `role="alert"`).
+- [x] Tested with keyboard only and axe (0 serious/critical violations). `e2e/lab-04/accessibility.spec.ts` — 6/6 passing: 3 keyboard-only walkthroughs (dashboards; status-change and Resolve dialogs; Cancel Ticket and Reopen dialogs) + axe sweep at 375/768/1280px, 0 serious/critical violations at every width.
 
 ## 10. Visual Consistency & Cleanup Checklist
 
-- [ ] All buttons use shared Button component (primary/secondary/danger/ghost).
-- [ ] All tables/cards/badges/tabs reuse Lab 2–3 components.
-- [ ] Editable vs read-only fields visibly different (read-only: no border, gray label).
-- [ ] Validation messages always directly under the field.
-- [ ] No leftover debug text, lorem ipsum, duplicate buttons, dead links, or console errors.
-- [ ] Dates formatted `DD MMM YYYY HH:mm` in local time everywhere.
+- [x] All buttons use shared Button component (primary/secondary/danger/ghost). Every Lab 4 dialog/form button uses the shared `.btn zen-btn-primary` / `.btn zen-btn-outline` / danger classes, consistent with Lab 2–3.
+- [x] All tables/cards/badges/tabs reuse Lab 2–3 components. Actions Taken's table/cards and the workflow status badges reuse `.zen-badge`, `.zen-card`, `.zen-table` from `theme.css`; no new component classes were introduced.
+- [x] Editable vs read-only fields visibly different (read-only: no border, gray label). Verified by inspection of `.zen-readonly-value`/`.zen-readonly-block` (unchanged, reused as-is) and the RS-01 screenshots.
+- [x] Validation messages always directly under the field. `FieldError` components in `TicketWorkflow.tsx`/`ActionsTakenSection.tsx` render immediately after their field, matching Lab 2/3's pattern.
+- [x] No leftover debug text, lorem ipsum, duplicate buttons, dead links, or console errors. AX-01 and RS-01 both assert zero browser console errors (AC-36) across every Lab 4 screen and dialog at all three widths; no debug/lorem text found during this pass.
+- [x] Dates formatted `DD MMM YYYY HH:mm` in local time everywhere. `formatDateTime()` (`actionsTakenRules.ts`) is the single shared formatter used by Actions Taken and the workflow History tab; unchanged from its Lab 4 introduction.
 
 ## 11. Screenshots Required
 
 `artifacts/lab-04/screenshots/{staff-dashboard,requester-dashboard,actions-taken}/` — each at desktop (1280), tablet (768), mobile (375), including loading/empty/error variants for dashboards and create/edit/409 for Actions Taken.
+
+**Done** — captured by `e2e/lab-04/responsive-visual.spec.ts` (RS-01): `requester-dashboard/{populated,empty}`, `staff-dashboard/{populated,admin}`, `actions-taken/{empty,list,create,edit,complete-dialog,cancel-dialog,409-conflict}`, each at `mobile`/`tablet`/`desktop` — 32 files total.

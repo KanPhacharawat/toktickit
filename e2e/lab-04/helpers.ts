@@ -23,6 +23,7 @@ export {
   expectFocusRing,
   expectLayoutIntact,
   expectNoHorizontalScroll,
+  expectNoOverlap,
   expectNotClipped,
   expectTouchFriendly,
   expectWithinViewport,
@@ -135,6 +136,13 @@ export function watchConsoleErrors(page: Page) {
     // expected request is excluded; any other endpoint returning 401
     // unexpectedly still fails the AC-36 check.
     if (text.includes("401") && msg.location().url.endsWith("/api/auth/me")) return;
+    // The Actions Taken 409 STALE_UPDATE flow (ui-spec.md §5.3) is exercised
+    // deliberately in tests by editing a record another session has already
+    // changed — the resulting 409 is the UI's own conflict dialog opening as
+    // designed, not an app bug, but Chromium still auto-logs the non-2xx
+    // resource load as a console error. Any other endpoint returning 409
+    // unexpectedly still fails the AC-36 check.
+    if (text.includes("409") && /\/api\/tickets\/\d+\/actions\/\d+$/.test(msg.location().url)) return;
     errors.push(text);
   });
   page.on("pageerror", (err) => {
@@ -207,10 +215,17 @@ export async function addAction(page: Page, fixture: ActionFixture) {
   await expect(form).not.toBeVisible();
 }
 
-/** Finds an Actions Taken row (desktop table row or mobile card) by its description text. */
+/**
+ * Finds an Actions Taken row (desktop table row or mobile card) by its
+ * description text. Both variants are always in the DOM — Bootstrap's
+ * d-none/d-lg-block classes just toggle CSS `display`, not React rendering —
+ * so this matches only the currently-visible one; otherwise `.first()` could
+ * pick the hidden table row below 1024px and a `.click()` on it would hang
+ * until the test timeout waiting for it to become visible.
+ */
 export function actionRow(page: Page, description: string) {
   return page
-    .locator('[data-testid="action-row"], [data-testid="action-card"]')
+    .locator('[data-testid="action-row"]:visible, [data-testid="action-card"]:visible')
     .filter({ hasText: description })
     .first();
 }

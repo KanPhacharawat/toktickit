@@ -76,6 +76,25 @@ function mockShell() {
     transitions: [],
     requesterCanIndicateResolved: false,
   });
+  vi.spyOn(api, "fetchStaffDashboard").mockResolvedValue({
+    generatedAt: "2026-10-01T00:00:00.000Z",
+    timeZone: "Asia/Bangkok",
+    metrics: [],
+    secondary: [],
+    byPriority: [],
+    urgentTickets: [],
+    recentTickets: [],
+  });
+  vi.spyOn(api, "fetchAdminDashboard").mockResolvedValue({
+    generatedAt: "2026-10-01T00:00:00.000Z",
+    timeZone: "Asia/Bangkok",
+    metrics: [],
+    secondary: [],
+    byPriority: [],
+    urgentTickets: [],
+    recentTickets: [],
+    users: { active: { Requester: 0, ITStaff: 0, Administrator: 0 }, inactive: 0 },
+  });
 }
 
 /** Renders the whole app as staff, then opens the given ticket from the queue. */
@@ -114,10 +133,8 @@ async function openTicketDetail(
   vi.spyOn(api, "fetchAdminUsers").mockResolvedValue({ data: [], meta: { totalItems: 0 } });
 
   render(<App />);
-  // An Administrator's home is User Management; the queue is a second stop.
-  if (signedInAs.role === "Administrator") {
-    await user.click(await screen.findByRole("button", { name: /^ticket queue$/i }));
-  }
+  // Lab 4 — Dashboard is home for both roles; the queue is a second stop.
+  await user.click(await screen.findByRole("button", { name: /^ticket queue$/i }));
   await user.click(await screen.findByRole("button", { name: new RegExp(ticketDetailData.ticketNumber) }));
   await screen.findByTestId("detail-ticket-number");
 }
@@ -500,6 +517,7 @@ describe("UI-33 — staff detail page states (AC-59, FR-16)", () => {
     );
 
     render(<App />);
+    await user.click(await screen.findByRole("button", { name: /^ticket queue$/i }));
     await user.click(await screen.findByRole("button", { name: /TT-MISSING/ }));
 
     expect(await screen.findByText(/this ticket does not exist/i)).toBeInTheDocument();

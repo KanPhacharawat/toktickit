@@ -139,6 +139,15 @@ function mockShell() {
     transitions: [],
     requesterCanIndicateResolved: false,
   });
+  vi.spyOn(api, "fetchStaffDashboard").mockResolvedValue({
+    generatedAt: "2026-10-01T00:00:00.000Z",
+    timeZone: "Asia/Bangkok",
+    metrics: [],
+    secondary: [],
+    byPriority: [],
+    urgentTickets: [],
+    recentTickets: [],
+  });
 }
 
 /** Renders the app as IT Staff and opens the given ticket from the queue. */
@@ -171,6 +180,8 @@ async function openStaffDetail(
   vi.spyOn(api, "fetchActionsTaken").mockResolvedValue({ items: actions, total: actions.length });
 
   render(<App />);
+  // Lab 4 — Dashboard is home for IT Staff; the queue is a second stop.
+  await user.click(await screen.findByRole("button", { name: /^ticket queue$/i }));
   await user.click(await screen.findByRole("button", { name: new RegExp(detail.ticketNumber) }));
   await screen.findByTestId("detail-ticket-number");
 }

@@ -775,10 +775,14 @@ export interface QueueParams {
   search?: string;
   statusGroup?: StatusGroup | "";
   currentStatus?: string;
+  /** api-spec.md §4.4 — dashboard drill-down: a status list, or the "open" alias. */
+  status?: string;
   ownership?: Ownership | "";
   itPriority?: string;
   requestedPriority?: string;
   categoryId?: string;
+  /** api-spec.md §4.4 — dashboard drill-down: my open follow-ups. */
+  followUpFor?: "me" | "";
   sortBy?: QueueSortableField;
   sortOrder?: SortOrder;
   page?: number;
@@ -1386,6 +1390,78 @@ export async function fetchStatusHistory(ticketId: number): Promise<StatusHistor
 }
 
 // ---------------------------------------------------------------------------
+// Dashboards (Lab 4 api-spec.md §4) — IT Staff / Administrator only.
+// ---------------------------------------------------------------------------
+
+export interface DashboardMetric {
+  key: string;
+  label: string;
+  value: number;
+  drillDown: string;
+}
+
+export interface DashboardByPriority {
+  priority: ItPriority;
+  value: number;
+  drillDown: string;
+}
+
+export interface DashboardTicketSummary {
+  id: number;
+  ticketNumber: string;
+  summary: string;
+  currentStatus: string;
+  itPriority: ItPriority;
+  ticketOwner: QueueOwner | null;
+  updatedAt: string;
+  createdAt: string;
+}
+
+export interface StaffDashboardData {
+  generatedAt: string;
+  timeZone: string;
+  metrics: DashboardMetric[];
+  secondary: DashboardMetric[];
+  byPriority: DashboardByPriority[];
+  urgentTickets: DashboardTicketSummary[];
+  recentTickets: DashboardTicketSummary[];
+  todayDelta?: number;
+}
+
+/** api-spec.md §4.3 — same shape as staff, plus a user-account counts block. */
+export interface AdminDashboardData extends StaffDashboardData {
+  users: { active: Record<AdminRole, number>; inactive: number };
+}
+
+async function dashboardFetch<T>(path: string): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, { credentials: "include" });
+  } catch {
+    throw new ApiError("Could not reach the server. Please try again.", {
+      status: 0,
+      code: "NETWORK_ERROR",
+    });
+  }
+  const body = await readJson(res);
+  if (!res.ok) {
+    notifyIfSessionExpired(res.status);
+    throw toApiError(res, body, "Could not load the dashboard. Please try again.");
+  }
+  return body as T;
+}
+
+/** api-spec.md §4.2 — IT Staff, Administrator. */
+export function fetchStaffDashboard(): Promise<StaffDashboardData> {
+  return dashboardFetch<StaffDashboardData>("/api/dashboard/staff");
+}
+
+/** api-spec.md §4.3 — Administrator only. */
+export function fetchAdminDashboard(): Promise<AdminDashboardData> {
+  return dashboardFetch<AdminDashboardData>("/api/dashboard/admin");
+}
+
+// ---------------------------------------------------------------------------
 // Administrator User Management (Lab 3 api-spec.md §14)
 // ---------------------------------------------------------------------------
 
@@ -1405,6 +1481,8 @@ export interface AdminUser {
 export interface AdminUserListParams {
   search?: string;
   role?: AdminRole | "";
+  /** api-spec.md §4.4 — dashboard drill-down. */
+  active?: "true" | "false" | "";
 }
 
 export interface AdminUserListResponse {

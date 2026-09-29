@@ -3,9 +3,11 @@
 TokTickIT is an IT Service Desk application for CPE334 Software Engineering course.
 The project uses a React frontend, an Express backend, PostgreSQL, and Prisma.
 
-As of Lab 3 it has real authentication and three roles — **Requester**,
-**IT Staff**, and **Administrator** — so people sign in with an email and
-password and see only what their role allows.
+It has real authentication and three roles — **Requester**, **IT Staff**, and
+**Administrator** — so people sign in with an email and password and see only
+what their role allows. As of Lab 4 it also records **Actions Taken** on a
+Ticket, enforces the full Ticket status workflow (including a resolution
+gate), and gives every role a dashboard.
 
 ## Tech Stack
 
@@ -37,6 +39,8 @@ toktickit/
 │   ├── tests/lab-02/              Lab 2 unit, UI and style tests
 │   ├── tests/lab-03/              Lab 3 role navigation, login, queue, ticket detail,
 │   │                              user management tests
+│   ├── tests/lab-04/              Lab 4 Actions Taken, workflow, dashboard, duplicate-submit
+│   │                              and form-resilience tests
 │   ├── .env.example
 │   ├── package.json
 │   └── vite.config.ts
@@ -56,7 +60,8 @@ toktickit/
 │   ├── tests/lab-02/              Lab 2 unit and API tests
 │   ├── tests/lab-03/              Lab 3 auth, authorization, queue, ticket operation,
 │   │                              user admin, seed and migration tests
-│   ├── tests/lab-04/              Lab 4 migration, rollback, and seed tests
+│   ├── tests/lab-04/              Lab 4 Actions Taken, workflow, dashboard, migration,
+│   │                              rollback, seed and performance-smoke tests
 │   ├── uploads/                   Attachment files (gitignored)
 │   ├── .env.example
 │   ├── package.json
@@ -65,15 +70,19 @@ toktickit/
 ├── e2e/lab-02/                    Playwright E2E, responsive and visual tests (Requester)
 ├── e2e/lab-03/                    Playwright E2E, accessibility, responsive and visual
 │                                  tests for every role
+├── e2e/lab-04/                    Playwright E2E for Actions Taken, ticket resolution,
+│                                  dashboards, accessibility and responsive/visual checks
 │
 ├── docs/
 │   ├── lab-01/
 │   ├── lab-02/                    Specification, API spec, UI spec, test plan,
 │   │                              peer review record, AI use record
-│   └── lab-03/                    Same set of documents for Lab 3
+│   ├── lab-03/                    Same set of documents for Lab 3
+│   └── lab-04/                    Same set of documents for Lab 4
 │
 ├── artifacts/lab-02/screenshots/  Desktop/tablet/mobile visual evidence (Lab 2)
 ├── artifacts/lab-03/screenshots/  Desktop/tablet/mobile visual evidence (Lab 3)
+├── artifacts/lab-04/screenshots/  Desktop/tablet/mobile visual evidence (Lab 4)
 │
 ├── .gitignore
 ├── playwright.config.ts
@@ -501,6 +510,11 @@ Lab 3 followed this flow: feature branches (`feature/lab3-specification`,
 `-ticket-queue`, `-ticket-operation`, `feature/admin-management`, `-lab3-e2e-visual`,
 `-lab3-release`) merged into `lab3-staging`, which was released to `main` in one PR.
 
+Lab 4 follows the same flow: feature branches (`feature/lab4-spec`,
+`-lab4-test-plan`, `-lab4-db-migration`, `-lab4-actions-taken-api`, and the
+remaining workflow/dashboard/hardening branches) merge into `lab4-staging`,
+which is released to `main` by `feature/lab4-release`.
+
 Lab 2 feature branches:
 
 ```text
@@ -691,6 +705,12 @@ replaced by the routes above; the mapping is at the end of the Lab 3 document.
 | [`docs/lab-03/tests.md`](docs/lab-03/tests.md)                 | Lab 3 test plan and traceability             |
 | [`docs/lab-03/reviewer.md`](docs/lab-03/reviewer.md)           | Lab 3 peer review record                     |
 | [`docs/lab-03/ai-use.md`](docs/lab-03/ai-use.md)               | Lab 3 AI use and reflection                  |
+| [`docs/lab-04/specification.md`](docs/lab-04/specification.md) | Lab 4 requirements, business rules, acceptance criteria, Definition of Done |
+| [`docs/lab-04/api-spec.md`](docs/lab-04/api-spec.md)           | Lab 4 endpoint contracts, authorization matrix (supersedes `docs/lab-03/api-spec.md`) |
+| [`docs/lab-04/ui-spec.md`](docs/lab-04/ui-spec.md)             | Lab 4 screens per role, dashboards, accessibility checklist |
+| [`docs/lab-04/tests.md`](docs/lab-04/tests.md)                 | Lab 4 test plan and AC-01–AC-39 traceability |
+| [`docs/lab-04/reviewer.md`](docs/lab-04/reviewer.md)           | Lab 4 peer review record                     |
+| [`docs/lab-04/ai-use.md`](docs/lab-04/ai-use.md)               | Lab 4 AI use and reflection                  |
 
 ## Visual Evidence
 
@@ -719,6 +739,17 @@ A screenshot is only written after the automated visual checklist passes for
 that state (no horizontal page scroll, no clipped button or label, everything
 inside the viewport), and the `VIS-coverage` test fails if any required screen
 is missing at any of the three sizes.
+
+Lab 4 screenshots are written to `artifacts/lab-04/screenshots/`, one folder
+per feature area:
+
+```text
+actions-taken/    requester-dashboard/    staff-dashboard/
+```
+
+Each folder holds `desktop-`, `tablet-`, and `mobile-` prefixed images for the
+list, create, edit, complete, cancel, 409-conflict, empty, and populated
+states.
 
 ## License
 

@@ -5,7 +5,10 @@ import { UPLOAD_DIR } from "../src/attachments.js";
 
 /**
  * Deletes the tickets the E2E suite creates, identified by the "E2E " prefix
- * its summaries carry. Attachments cascade with their ticket.
+ * its summaries carry. Comments, Internal Notes and Attachments cascade with
+ * their ticket; Action Taken and status history rows are audit trail
+ * (`onDelete: Restrict` in schema.prisma) and must be removed explicitly
+ * first, or the ticket delete is rejected by the foreign key.
  *
  * Only E2E-tagged rows are touched: seeded reference data and any ticket a
  * person created by hand are left alone.
@@ -18,8 +21,20 @@ import { UPLOAD_DIR } from "../src/attachments.js";
 async function main() {
   const prisma = getPrisma();
 
+  const e2eTicketIds = (
+    await prisma.ticket.findMany({
+      where: { summary: { startsWith: "E2E " } },
+      select: { id: true },
+    })
+  ).map((t) => t.id);
+
+  if (e2eTicketIds.length > 0) {
+    await prisma.actionTaken.deleteMany({ where: { ticketId: { in: e2eTicketIds } } });
+    await prisma.ticketStatusHistory.deleteMany({ where: { ticketId: { in: e2eTicketIds } } });
+  }
+
   const { count } = await prisma.ticket.deleteMany({
-    where: { summary: { startsWith: "E2E " } },
+    where: { id: { in: e2eTicketIds } },
   });
 
   // Lab 3 — accounts the user-administration specs create use the reserved

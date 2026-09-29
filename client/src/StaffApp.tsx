@@ -37,7 +37,13 @@ export default function StaffApp() {
   }
 
   return (
-    <AppShell staffView={staffView} onNavigateStaff={setStaffView}>
+    <AppShell
+      staffView={staffView}
+      onNavigateStaff={(next) => {
+        setOpenTicketId(null);
+        setStaffView(next);
+      }}
+    >
       {openTicketId !== null ? (
         <StaffTicketDetail ticketId={openTicketId} onBack={() => setOpenTicketId(null)} />
       ) : staffView === "dashboard" ? (

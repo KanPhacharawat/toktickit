@@ -327,6 +327,7 @@ export default function StaffTicketDetail({
               currentStatus={ticket.currentStatus}
               version={ticket.version}
               ticketOwnerName={ticket.ticketOwner ? ticket.ticketOwner.name : null}
+              ticketUpdatedAt={ticket.updatedAt}
               itPriorityLabel={priorityLabel(ticket.itPriority)}
               requesterResolvedIndicatedAt={ticket.requesterResolvedIndicatedAt}
               onChanged={handleWorkflowChanged}

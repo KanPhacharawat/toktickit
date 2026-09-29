@@ -334,6 +334,7 @@ export default function TicketWorkflow({
   currentStatus,
   version,
   ticketOwnerName,
+  ticketUpdatedAt,
   itPriorityLabel,
   requesterResolvedIndicatedAt,
   onChanged,
@@ -344,6 +345,10 @@ export default function TicketWorkflow({
   currentStatus: string;
   version: number;
   ticketOwnerName: string | null;
+  /** Bumped by any ticket-related mutation (status, ownership, Actions
+   * Taken); used to refetch the transitions/resolution-gate data those
+   * mutations can change, since they happen in sibling components. */
+  ticketUpdatedAt: string;
   /** Staff only — Requesters never see IT Priority (Lab 3 BR-26). */
   itPriorityLabel?: string;
   requesterResolvedIndicatedAt: string | null;
@@ -377,9 +382,16 @@ export default function TicketWorkflow({
     }
   }, [ticketId]);
 
+  // Claim/Assign/Reassign and Actions Taken all happen in sibling components
+  // and only reach this panel through the parent's re-fetched `ticket`
+  // object — with no other signal, the previously-fetched transitions (and
+  // the resolution gate embedded in them) kept reflecting the ticket's prior
+  // ownership/action state, e.g. still showing "No planned actions" unmet
+  // right after the last Planned action was completed, until the whole page
+  // was reloaded. `ticketUpdatedAt` changes on every such mutation.
   useEffect(() => {
     void loadTransitions();
-  }, [loadTransitions]);
+  }, [loadTransitions, ticketOwnerName, ticketUpdatedAt]);
 
   const loadHistory = useCallback(async () => {
     setHistoryState("loading");

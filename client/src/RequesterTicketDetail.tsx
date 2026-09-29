@@ -350,6 +350,7 @@ export default function RequesterTicketDetail({
             currentStatus={ticket.currentStatus}
             version={ticket.version}
             ticketOwnerName={ticket.ticketOwner ? ticket.ticketOwner.name : null}
+            ticketUpdatedAt={ticket.updatedAt}
             requesterResolvedIndicatedAt={ticket.requesterResolvedIndicatedAt}
             onChanged={handleWorkflowChanged}
           />

@@ -67,6 +67,13 @@ function detail(overrides: Partial<api.TicketDetail> = {}): api.TicketDetail {
 
 function mockShell() {
   vi.spyOn(api, "fetchCategories").mockResolvedValue([]);
+  vi.spyOn(api, "fetchRequesterDashboard").mockResolvedValue({
+    generatedAt: "2026-10-01T00:00:00.000Z",
+    timeZone: "Asia/Bangkok",
+    metrics: [],
+    needsAttention: [],
+    recentTickets: [],
+  });
   vi.spyOn(api, "fetchMyTickets").mockResolvedValue({
     data: [LIST_ROW],
     meta: { page: 1, pageSize: 10, totalItems: 1, totalPages: 1 },
@@ -85,6 +92,8 @@ function mockShell() {
 async function openDetail(user: ReturnType<typeof userEvent.setup>) {
   renderAsRequester(<Lab2App />);
 
+  const nav = await screen.findByRole("navigation", { name: /main/i });
+  await user.click(within(nav).getByRole("button", { name: /^my tickets$/i }));
   await user.click(await screen.findByRole("button", { name: /TT-20260905-0001/ }));
   await screen.findByRole("heading", { name: /ticket detail/i });
 }

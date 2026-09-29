@@ -36,6 +36,17 @@ export function emptyStaffDashboard(): api.StaffDashboardData {
   };
 }
 
+/** An empty Lab 4 requester dashboard body (api-spec.md §4.1), for suites that stay on auth. */
+export function emptyRequesterDashboard(): api.RequesterDashboardData {
+  return {
+    generatedAt: "2026-10-01T00:00:00.000Z",
+    timeZone: "Asia/Bangkok",
+    metrics: [],
+    needsAttention: [],
+    recentTickets: [],
+  };
+}
+
 /** Stubs the Lab 2/3/4 screens behind the gate so these suites stay on auth. */
 export function stubLab2Screens() {
   vi.spyOn(api, "fetchCategories").mockResolvedValue([]);
@@ -54,6 +65,7 @@ export function stubLab2Screens() {
     },
   });
   vi.spyOn(api, "fetchAdminUsers").mockResolvedValue({ data: [], meta: { totalItems: 0 } });
+  vi.spyOn(api, "fetchRequesterDashboard").mockResolvedValue(emptyRequesterDashboard());
   vi.spyOn(api, "fetchStaffDashboard").mockResolvedValue(emptyStaffDashboard());
   vi.spyOn(api, "fetchAdminDashboard").mockResolvedValue({
     ...emptyStaffDashboard(),

@@ -32,39 +32,42 @@ async function logOut(page: Page) {
   await expect(page.getByRole("button", { name: /^sign in$/i })).toBeVisible();
 }
 
-test("E2E-01 — each role signs in, lands on its home, and sees the right navigation", async ({
+test("E2E-01 — each role signs in, lands on its Dashboard, and sees the right navigation", async ({
   page,
 }) => {
+  // Lab 4 (ui-spec.md §2) — every role's home is now its own Dashboard, with
+  // a "Dashboard" nav item added ahead of the role's other destinations.
   const nav = page.getByRole("navigation", { name: /^main$/i });
 
-  // Requester — My Tickets home, with Create Ticket.
+  // Requester — Dashboard home, with My Tickets and Create Ticket.
   await signIn(page, "requester-a@example.com");
   await expect(page.getByTestId("signed-in-user")).toHaveText("Requester A");
   await expect(page.getByTestId("signed-in-role")).toHaveText("Requester");
-  await expect(page.getByRole("heading", { name: /^my tickets$/i })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 })).toContainText(/welcome/i);
+  await expect(nav.getByRole("button", { name: "Dashboard" })).toHaveAttribute("aria-current", "page");
   await expect(nav.getByRole("button", { name: /^my tickets$/i })).toBeVisible();
   await expect(nav.getByRole("button", { name: /^create ticket$/i })).toBeVisible();
   await expect(nav.getByText(/ticket queue|user management/i)).toHaveCount(0);
   await logOut(page);
 
-  // IT Staff — Ticket Queue home, and nothing else to navigate to.
+  // IT Staff — Dashboard home, with Ticket Queue as the second destination.
   await signIn(page, "itstaff-1@example.com");
   await expect(page.getByTestId("signed-in-user")).toHaveText("IT Staff 1");
   await expect(page.getByTestId("signed-in-role")).toHaveText("IT Staff");
-  await expect(page.getByRole("heading", { name: /^ticket queue$/i })).toBeVisible();
-  await expect(nav).toHaveText("Ticket Queue");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText(/welcome back/i);
+  await expect(nav.getByRole("button", { name: "Dashboard" })).toHaveAttribute("aria-current", "page");
+  await expect(nav.getByRole("button", { name: /^ticket queue$/i })).toBeVisible();
   await expect(nav.getByText(/user management|my tickets|create ticket/i)).toHaveCount(0);
   await logOut(page);
 
-  // Administrator — User Management home, with Ticket Queue as the second destination.
+  // Administrator — Dashboard home, with Ticket Queue and User Management.
   await signIn(page, "admin@example.com");
   await expect(page.getByTestId("signed-in-user")).toHaveText("Administrator");
   await expect(page.getByTestId("signed-in-role")).toHaveText("Administrator");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText(/welcome back/i);
+  await expect(nav.getByRole("button", { name: "Dashboard" })).toHaveAttribute("aria-current", "page");
+  await nav.getByRole("button", { name: /^user management$/i }).click();
   await expect(page.getByRole("heading", { name: /^user management$/i })).toBeVisible();
-  await expect(nav.getByRole("button", { name: /^user management$/i })).toHaveAttribute(
-    "aria-current",
-    "page",
-  );
   await nav.getByRole("button", { name: /^ticket queue$/i }).click();
   await expect(page.getByRole("heading", { name: /^ticket queue$/i })).toBeVisible();
   await expect(nav.getByText(/my tickets|create ticket/i)).toHaveCount(0);
@@ -197,10 +200,11 @@ test("E2E-06 — a Requester is never shown, and cannot call, staff or admin des
   await signIn(page, "requester-b@example.com");
   await expect(page.getByTestId("signed-in-user")).toHaveText("Requester B");
 
-  // Typing a staff URL still lands on the Requester app: there is no such route.
+  // Typing a staff URL still lands on the Requester app: there is no such
+  // route (SPA reload just re-lands on the Requester's own Dashboard).
   for (const url of ["/queue", "/admin/users"]) {
     await page.goto(url);
-    await expect(page.getByRole("heading", { name: /^my tickets$/i })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1 })).toContainText(/welcome/i);
     await expect(page.getByRole("heading", { name: /ticket queue|user management/i })).toHaveCount(0);
   }
   await expect(
@@ -224,7 +228,7 @@ test("E2E-06 — IT Staff are never shown, and cannot call, the admin destinatio
   await expect(page.getByTestId("signed-in-user")).toHaveText("IT Staff 2");
 
   await page.goto("/admin/users");
-  await expect(page.getByRole("heading", { name: /^ticket queue$/i })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 })).toContainText(/welcome back/i);
   await expect(page.getByRole("heading", { name: /user management/i })).toHaveCount(0);
   await expect(page.getByRole("navigation", { name: /^main$/i })).not.toContainText(
     /user management/i,

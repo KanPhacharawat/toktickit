@@ -214,6 +214,47 @@ body {
   outline-offset: 2px;
 }
 
+/* Mobile nav (ui-spec.md §2 line 60): a hamburger toggle that opens a
+   full-width drawer, replacing the inline nav row below 768px. */
+.zen-nav-toggle {
+  background: none;
+  border: none;
+  color: #fff;
+  display: none;
+  font-size: 1.25rem;
+  line-height: 1;
+  min-height: 32px;
+  padding: 0.35rem 0.5rem;
+}
+@media (max-width: 767px) {
+  .zen-nav-toggle {
+    display: inline-flex;
+  }
+  .zen-nav-desktop {
+    display: none;
+  }
+}
+.zen-nav-drawer-overlay {
+  background: rgba(0, 0, 0, 0.4);
+  inset: 0;
+  position: fixed;
+  z-index: 1050;
+}
+.zen-nav-drawer {
+  background: var(--zen-primary);
+  color: #fff;
+  height: 100%;
+  max-width: 320px;
+  overflow-y: auto;
+  padding: 1rem;
+  width: 100%;
+}
+.zen-nav-drawer-link {
+  padding: 0.75rem 0.5rem;
+  text-align: left;
+  width: 100%;
+}
+
 /* --- My Tickets --------------------------------------------------------- */
 
 .zen-table {
@@ -426,4 +467,157 @@ body {
    (ui-spec.md §9: "Buttons remain touch-friendly"). */
 .btn-sm {
   min-height: 32px;
+}
+
+/* --- Lab 4 Staff Dashboard (ui-spec.md §3) ------------------------------- */
+
+/* Desktop: 5 across. Tablet: 3 then 2 (ui-spec.md §3.4). Mobile: 2 across,
+   last one full width. */
+.zen-metric-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+@media (max-width: 1023px) {
+  .zen-metric-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 767px) {
+  .zen-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .zen-metric-grid > :last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+}
+
+.zen-metric-card {
+  border: 1px solid var(--zen-border);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1rem;
+  text-align: left;
+}
+.zen-metric-card:hover {
+  border-color: var(--zen-secondary);
+}
+.zen-metric-value {
+  color: var(--zen-primary);
+  font-size: 1.75rem;
+  font-weight: 700;
+}
+.zen-link-text {
+  color: var(--zen-secondary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+/* Two columns on desktop/tablet, one on mobile (ui-spec.md §3.4). */
+.zen-dashboard-columns {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr 1fr;
+}
+@media (max-width: 767px) {
+  .zen-dashboard-columns {
+    grid-template-columns: 1fr;
+  }
+}
+.zen-dashboard-column {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.zen-dashboard-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.zen-dashboard-row {
+  align-items: center;
+  border-top: 1px solid var(--zen-border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding-top: 0.5rem;
+}
+.zen-dashboard-row:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+.zen-dashboard-row-title {
+  flex: 1 1 160px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.zen-glance-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.zen-glance-item {
+  display: flex;
+  justify-content: space-between;
+  text-decoration: none;
+  width: 100%;
+}
+
+.zen-link-badge {
+  background: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+}
+.zen-link-badge:hover {
+  background-color: var(--zen-pale);
+}
+
+/* Loading skeletons — ui-spec.md §3.3 ("Card skeletons ... aria-busy"). */
+.zen-skeleton-card {
+  height: 84px;
+  padding: 1rem;
+}
+.zen-skeleton-line {
+  background: linear-gradient(90deg, var(--zen-readonly) 25%, var(--zen-border) 50%, var(--zen-readonly) 75%);
+  background-size: 200% 100%;
+  border-radius: 4px;
+  animation: zen-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+.zen-skeleton-line-sm {
+  height: 0.75rem;
+  margin-bottom: 0.5rem;
+  width: 60%;
+}
+.zen-skeleton-line-lg {
+  height: 1.5rem;
+  width: 40%;
+}
+.zen-skeleton-line-row {
+  height: 1rem;
+  margin-bottom: 0.75rem;
+  width: 100%;
+}
+.zen-skeleton-line-row:last-child {
+  margin-bottom: 0;
+}
+@keyframes zen-skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .zen-skeleton-line {
+    animation: none;
+  }
 }

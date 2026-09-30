@@ -1,6 +1,5 @@
 import type { PrismaClient, UserRole } from "@prisma/client";
 import { hashPassword } from "../src/auth/credentials.js";
-import { seedTicketsAndActions } from "./seedTickets.js";
 
 // Seed data (Lab 3 specification.md §7.8, BR-59).
 //
@@ -99,16 +98,9 @@ export async function seedDatabase(prisma: PrismaClient) {
     });
   }
 
-  // Lab 4 §7.4 — Tickets and Actions Taken covering every status, priority,
-  // and Actions Taken shape (BR-47; seed data must show both zero and
-  // non-zero values for every dashboard metric).
-  const ticketCounts = await seedTicketsAndActions(prisma);
-
   return {
     categories: CATEGORY_NAMES.length,
     relatedSystems: RELATED_SYSTEM_NAMES.length,
     accounts: SEED_ACCOUNTS.length,
-    tickets: ticketCounts.tickets,
-    actions: ticketCounts.actions,
   };
 }

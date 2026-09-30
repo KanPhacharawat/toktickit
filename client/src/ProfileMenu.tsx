@@ -17,27 +17,11 @@ export default function ProfileMenu({ auth }: { auth: AuthContextValue }) {
   useEffect(() => {
     if (!open) return;
 
-    // specification.md §3.1 — arrow keys move between the menu's items.
-    function items(): HTMLElement[] {
-      return Array.from(
-        wrapperRef.current?.querySelectorAll<HTMLElement>("#profile-menu button:not(:disabled)") ?? [],
-      );
-    }
-
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setOpen(false);
         buttonRef.current?.focus();
-        return;
       }
-      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-      const list = items();
-      if (list.length === 0) return;
-      event.preventDefault();
-      const currentIndex = list.indexOf(document.activeElement as HTMLElement);
-      const delta = event.key === "ArrowDown" ? 1 : -1;
-      const nextIndex = (currentIndex + delta + list.length) % list.length;
-      list[nextIndex].focus();
     }
     function onPointerDown(event: MouseEvent) {
       if (!wrapperRef.current?.contains(event.target as Node)) setOpen(false);

@@ -48,9 +48,7 @@ const PROTECTED_ROUTES: Array<{
   { name: "claim", method: "post", path: "/api/tickets/1/claim", role: "Staff" },
   { name: "owner", method: "patch", path: "/api/tickets/1/owner", role: "Staff" },
   { name: "it priority", method: "patch", path: "/api/tickets/1/it-priority", role: "Staff" },
-  // Lab 4 api-spec.md §3.2/§7 — PATCH .../status is retired (404 for every
-  // role now, see server/tests/lab-04/ticket-workflow.api.test.ts), so it is
-  // no longer part of this allow/deny matrix.
+  { name: "status", method: "patch", path: "/api/tickets/1/status", role: "Staff" },
   { name: "internal notes list", method: "get", path: "/api/tickets/1/internal-notes", role: "Staff" },
   { name: "internal notes post", method: "post", path: "/api/tickets/1/internal-notes", role: "Staff" },
 ];

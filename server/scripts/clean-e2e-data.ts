@@ -5,10 +5,7 @@ import { UPLOAD_DIR } from "../src/attachments.js";
 
 /**
  * Deletes the tickets the E2E suite creates, identified by the "E2E " prefix
- * its summaries carry. Comments, Internal Notes and Attachments cascade with
- * their ticket; Action Taken and status history rows are audit trail
- * (`onDelete: Restrict` in schema.prisma) and must be removed explicitly
- * first, or the ticket delete is rejected by the foreign key.
+ * its summaries carry. Attachments cascade with their ticket.
  *
  * Only E2E-tagged rows are touched: seeded reference data and any ticket a
  * person created by hand are left alone.
@@ -21,29 +18,13 @@ import { UPLOAD_DIR } from "../src/attachments.js";
 async function main() {
   const prisma = getPrisma();
 
-  const e2eTicketIds = (
-    await prisma.ticket.findMany({
-      where: { summary: { startsWith: "E2E " } },
-      select: { id: true },
-    })
-  ).map((t) => t.id);
-
-  if (e2eTicketIds.length > 0) {
-    await prisma.actionTaken.deleteMany({ where: { ticketId: { in: e2eTicketIds } } });
-    await prisma.ticketStatusHistory.deleteMany({ where: { ticketId: { in: e2eTicketIds } } });
-  }
-
   const { count } = await prisma.ticket.deleteMany({
-    where: { id: { in: e2eTicketIds } },
+    where: { summary: { startsWith: "E2E " } },
   });
 
   // Lab 3 — accounts the user-administration specs create use the reserved
-  // `@toktickit.test` domain (tests.md §1.2). Their tickets are gone by now
-  // if tagged "E2E "; release any untagged ticket that still names one as
-  // owner, and delete any untagged ticket where one is the requester
-  // (Ticket.requesterId is onDelete: Restrict — it can't be nulled out, so
-  // a stray fixture ticket without the tag would otherwise block the user
-  // delete below indefinitely), then remove the accounts.
+  // `@toktickit.test` domain (tests.md §1.2). Their tickets are gone by now;
+  // release any that still name one as owner, then remove the accounts.
   const e2eUsers = await prisma.user.findMany({
     where: { email: { endsWith: "@toktickit.test" } },
     select: { id: true },
@@ -54,19 +35,6 @@ async function main() {
       where: { ticketOwnerId: { in: e2eUserIds } },
       data: { ticketOwnerId: null },
     });
-
-    const orphanTicketIds = (
-      await prisma.ticket.findMany({
-        where: { requesterId: { in: e2eUserIds } },
-        select: { id: true },
-      })
-    ).map((t) => t.id);
-    if (orphanTicketIds.length > 0) {
-      await prisma.actionTaken.deleteMany({ where: { ticketId: { in: orphanTicketIds } } });
-      await prisma.ticketStatusHistory.deleteMany({ where: { ticketId: { in: orphanTicketIds } } });
-      await prisma.ticket.deleteMany({ where: { id: { in: orphanTicketIds } } });
-    }
-
     await prisma.user.deleteMany({ where: { id: { in: e2eUserIds } } });
   }
 

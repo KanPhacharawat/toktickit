@@ -250,21 +250,6 @@ export async function gotoQueue(page: Page) {
   ).toBeVisible();
 }
 
-/** Lab 4 — the Requester lands on the Dashboard; My Tickets is a second stop. */
-export async function gotoMyTickets(page: Page) {
-  const button = mainNav(page).getByRole("button", { name: /^my tickets$/i });
-  if (await button.count()) await button.click();
-  await expect(page.getByRole("heading", { name: /^my tickets$/i })).toBeVisible();
-}
-
-/** Lab 4 — the Administrator lands on the Dashboard; User Management is a second stop. */
-export async function gotoUserManagement(page: Page) {
-  const button = mainNav(page).getByRole("button", { name: /^user management$/i });
-  if (await button.count()) await button.click();
-  await expect(page.getByRole("heading", { name: /^user management$/i })).toBeVisible();
-  await expect(page.getByTestId("user-rows")).toBeVisible();
-}
-
 /** Searches the queue for a ticket number and opens its detail. */
 export async function openTicketFromQueue(page: Page, ticket: FixtureTicket) {
   await gotoQueue(page);

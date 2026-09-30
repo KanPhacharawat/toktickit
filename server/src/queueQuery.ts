@@ -1,5 +1,5 @@
 import { REQUESTED_PRIORITIES, type RequestedPriority } from "./ticketValidation.js";
-import { TICKET_STATUSES, parseStatusListParam, type TicketStatus } from "./ticketListQuery.js";
+import { TICKET_STATUSES, type TicketStatus } from "./ticketListQuery.js";
 
 // Query parsing for the IT Staff Ticket Queue (api-spec.md §7.1).
 //
@@ -48,14 +48,10 @@ export interface QueueQuery {
   search: string;
   statusGroup: StatusGroup | null;
   currentStatus: TicketStatus | null;
-  /** api-spec.md §4.4 — dashboard drill-down: a status list, or the "open" alias. */
-  status: TicketStatus[] | null;
   ownership: Ownership | null;
   itPriority: ItPriority | null;
   requestedPriority: RequestedPriority | null;
   categoryId: number | null;
-  /** api-spec.md §4.4 — dashboard drill-down: my open Completed actions with a follow-up. */
-  followUpForMe: boolean;
   sortBy: QueueSortableField;
   sortOrder: SortOrder;
   page: number;
@@ -119,18 +115,6 @@ export function parseQueueQuery(raw: Record<string, unknown>): QueueQueryResult 
     fieldErrors.currentStatus = "Use either a status group or a single status, not both.";
   }
 
-  // --- status (api-spec.md §4.4 dashboard drill-down) -----------------------
-  let status: TicketStatus[] | null = null;
-  if (!isBlank(raw.status)) {
-    const value = scalar(raw.status);
-    const parsed = value === null ? null : parseStatusListParam(value);
-    if (parsed === null) {
-      fieldErrors.status = "Status filter is not valid.";
-    } else {
-      status = parsed;
-    }
-  }
-
   // --- ownership -------------------------------------------------------------
   let ownership: Ownership | null = null;
   if (!isBlank(raw.ownership)) {
@@ -150,28 +134,6 @@ export function parseQueueQuery(raw: Record<string, unknown>): QueueQueryResult 
       fieldErrors.itPriority = "IT Priority filter is not valid.";
     } else {
       itPriority = value as ItPriority;
-    }
-  }
-  // api-spec.md §4.4 — `priority` is the dashboard drill-down alias for `itPriority`.
-  if (!isBlank(raw.priority)) {
-    const value = scalar(raw.priority);
-    if (value === null || !(IT_PRIORITIES as readonly string[]).includes(value)) {
-      fieldErrors.priority = "Priority filter is not valid.";
-    } else if (itPriority !== null && itPriority !== value) {
-      fieldErrors.priority = "Use either priority or itPriority, not both.";
-    } else {
-      itPriority = value as ItPriority;
-    }
-  }
-
-  // --- followUpFor (api-spec.md §4.4 dashboard drill-down) -------------------
-  let followUpForMe = false;
-  if (!isBlank(raw.followUpFor)) {
-    const value = scalar(raw.followUpFor);
-    if (value !== "me") {
-      fieldErrors.followUpFor = "followUpFor only supports 'me'.";
-    } else {
-      followUpForMe = true;
     }
   }
 
@@ -246,12 +208,10 @@ export function parseQueueQuery(raw: Record<string, unknown>): QueueQueryResult 
       search,
       statusGroup,
       currentStatus,
-      status,
       ownership,
       itPriority,
       requestedPriority,
       categoryId,
-      followUpForMe,
       sortBy,
       sortOrder,
       page,

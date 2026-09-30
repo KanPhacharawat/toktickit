@@ -6,14 +6,10 @@ import {
   postPublicComment,
   reportProblemResolved,
   type TicketDetail,
-  type TicketWorkflowSummary,
 } from "./api.js";
 import { useAuth } from "./AuthContext.js";
-import ActionsTakenSection from "./ActionsTakenSection.js";
 import AttachmentSection from "./AttachmentSection.js";
 import ThreadSection from "./ThreadSection.js";
-import TicketWorkflow from "./TicketWorkflow.js";
-import { isTicketLocked } from "./actionsTakenRules.js";
 import { priorityLabel } from "./ticketFormRules.js";
 
 const COMMENT_MAX = 2000;
@@ -211,18 +207,6 @@ export default function RequesterTicketDetail({
     void load();
   }, [load]);
 
-  function handleWorkflowChanged(summary: TicketWorkflowSummary) {
-    setTicket((current) =>
-      current
-        ? {
-            ...current,
-            ...summary,
-            ticketOwner: summary.ticketOwner ? { name: summary.ticketOwner.name } : null,
-          }
-        : current,
-    );
-  }
-
   return (
     <main className="container py-4" style={{ maxWidth: 860 }}>
       <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
@@ -343,31 +327,10 @@ export default function RequesterTicketDetail({
             </div>
           </section>
 
-          <TicketWorkflow
-            ticketId={ticket.id}
-            ticketNumber={ticket.ticketNumber}
-            role="Requester"
-            currentStatus={ticket.currentStatus}
-            version={ticket.version}
-            ticketOwnerName={ticket.ticketOwner ? ticket.ticketOwner.name : null}
-            ticketUpdatedAt={ticket.updatedAt}
-            requesterResolvedIndicatedAt={ticket.requesterResolvedIndicatedAt}
-            onChanged={handleWorkflowChanged}
-          />
-
           <AttachmentSection
             ticketId={ticket.id}
             attachments={ticket.attachments}
             onChanged={() => load({ silent: true })}
-          />
-
-          <ActionsTakenSection
-            ticketId={ticket.id}
-            ticketCreatedAt={ticket.createdAt}
-            currentUserId={user?.id ?? -1}
-            canWrite={false}
-            ticketLocked={isTicketLocked(ticket.currentStatus)}
-            assignableUsers={[]}
           />
 
           <ThreadSection

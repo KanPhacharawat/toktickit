@@ -3,8 +3,9 @@ import type { ItPriority } from "@prisma/client";
 import { getPrisma } from "./prisma.js";
 import { protect } from "./auth/middleware.js";
 import { fail, hasOperationalAuthority, internalError, isStale, resolveTicketAccess } from "./ticketAccess.js";
-import { isTerminal } from "./statusTransitions.js";
+import { isOwnerRequiredTarget, isPermittedTransition, isTerminal } from "./statusTransitions.js";
 import { loadStaffTicketDetail } from "./ticketDetailView.js";
+import { TICKET_STATUSES, type TicketStatus } from "./ticketListQuery.js";
 
 // IT Staff Ticket Operations — claim, assign/reassign, IT Priority, status
 // (api-spec.md §9), and the assignable-user list (§7.2).
@@ -184,11 +185,68 @@ staffOperationsRouter.patch(
 );
 
 // ---------------------------------------------------------------------------
-// PATCH /api/tickets/:ticketId/status (Lab 3 §9.4) is retired. Lab 4
-// api-spec.md §3.2 / §7 — superseded by POST /api/tickets/:ticketId/status
-// (ticketWorkflow.ts), which adds the full role matrix and the resolution
-// gate. Not registering the route here means it falls through to the
-// unmatched-/api 404 in app.ts, so it cannot be used to bypass the gate.
+// PATCH /api/tickets/:ticketId/status (§9.4). The current owner or an
+// Administrator.
 // ---------------------------------------------------------------------------
+staffOperationsRouter.patch(
+  "/api/tickets/:ticketId/status",
+  ...protect("ITStaff", "Administrator"),
+  async (req: Request, res: Response) => {
+    try {
+      const access = await resolveTicketAccess(req, res);
+      if (!access.ok) return;
+
+      if (!hasOperationalAuthority(access, req.auth!.user)) {
+        return fail(res, 403, "FORBIDDEN", "You do not have access to this resource.");
+      }
+
+      const raw = (req.body as { currentStatus?: unknown } | undefined)?.currentStatus;
+      if (typeof raw !== "string" || !(TICKET_STATUSES as readonly string[]).includes(raw)) {
+        return fail(res, 400, "VALIDATION_ERROR", "The request contains invalid data.", {
+          fieldErrors: { currentStatus: "Select a valid status." },
+        });
+      }
+      const target = raw as TicketStatus;
+
+      if (isStale(access, req.body)) return staleError(res);
+
+      if (isTerminal(access.currentStatus)) {
+        return fail(res, 409, "TICKET_CLOSED", "This ticket is closed and cannot change status.");
+      }
+
+      if (!isPermittedTransition(access.currentStatus, target)) {
+        return fail(
+          res,
+          409,
+          "INVALID_STATUS_TRANSITION",
+          `A ticket cannot move from ${access.currentStatus} to ${target}.`,
+        );
+      }
+
+      if (access.ticketOwnerId === null && isOwnerRequiredTarget(target)) {
+        return fail(
+          res,
+          409,
+          "OWNER_REQUIRED",
+          `Assign an owner before moving this ticket to ${target}.`,
+        );
+      }
+
+      // BR-48 — reopening treats the resolution signal as not holding.
+      await getPrisma().ticket.update({
+        where: { id: access.ticketId },
+        data: {
+          currentStatus: target,
+          ...(target === "Reopened" ? { problemAppearsResolvedAt: null } : {}),
+        },
+      });
+
+      return res.status(200).json({ data: await loadStaffTicketDetail(access.ticketId, req.auth!.user) });
+    } catch (err) {
+      console.error("PATCH status failed:", err);
+      return internalError(res, "Could not update the status. Please try again.");
+    }
+  },
+);
 
 export default staffOperationsRouter;

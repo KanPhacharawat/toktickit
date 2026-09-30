@@ -7,9 +7,6 @@ import { commentsRouter } from "./comments.js";
 import { queueRouter } from "./queue.js";
 import { staffOperationsRouter } from "./staffOperations.js";
 import { adminUsersRouter } from "./adminUsers.js";
-import { actionsTakenRouter } from "./actionsTaken.js";
-import { ticketWorkflowRouter } from "./ticketWorkflow.js";
-import { dashboardRouter } from "./dashboard.js";
 import { authRouter } from "./auth/routes.js";
 import { bcryptCost } from "./auth/credentials.js";
 import { protect } from "./auth/middleware.js";
@@ -60,30 +57,25 @@ app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
 app.use(authRouter);
 
 // ---------------------------------------------------------------------------
-// GET /api/health (public) — Lab 4 api-spec.md §5, AC-37. Reports real DB
-// connectivity so an operator/load-balancer can tell "the process is up"
-// (always true if this handler runs) from "the app can actually serve
-// requests" (needs the DB). Never leaks connection strings or error internals.
+// Issue 2 — API health check
+// Make the test in tests/lab-01/health.test.ts pass.
+// It must return HTTP 200 with JSON: { status: "ok", service: "TokTickIT API" }
 // ---------------------------------------------------------------------------
-app.get("/api/health", async (_req: Request, res: Response) => {
-  try {
-    await getPrisma().$queryRaw`SELECT 1`;
-    return res.status(200).json({
-      status: "ok",
-      db: "up",
-      version: "lab4",
-      time: new Date().toISOString(),
-    });
-  } catch {
-    return res.status(503).json({ status: "degraded", db: "down" });
-  }
+app.get("/api/health", (_req: Request, res: Response) => {
+  // TODO(Issue 2): replace this stub with the required 200 response.
+  res.status(200).json({
+    status: "ok",
+    service: "TokTickIT API",
+  });
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/categories
+// Issue 4 — Category list
+// Add:  GET /api/categories
 //   -> read categories from PostgreSQL via getPrisma().category.findMany(...)
 //   -> return each { id, name } in a predictable (id) order
 //   -> on failure, respond 500 with a safe message (no internal details)
+// TODO(Issue 4): implement the route here.
 //
 // Lab 3 — any authenticated, gated role may read reference data (matrix §5.1
 // "Categories, Related Systems": Yes for every role), so `protect()` takes no
@@ -121,12 +113,6 @@ app.use(staffOperationsRouter);
 app.use(attachmentsRouter);
 app.use(commentsRouter);
 app.use(adminUsersRouter);
-app.use(actionsTakenRouter);
-// Lab 4 §3 — retires Lab 3's PATCH /api/tickets/:ticketId/status (removed
-// from staffOperationsRouter above); this is the only status-change route,
-// so bypassing the UI can never skip the matrix or the resolution gate.
-app.use(ticketWorkflowRouter);
-app.use(dashboardRouter);
 
 // api-spec.md §1.1 — any unmatched /api route, including a removed Lab 2
 // one, answers the documented envelope instead of Express's default HTML.

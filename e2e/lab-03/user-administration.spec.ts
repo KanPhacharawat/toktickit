@@ -10,7 +10,6 @@ import {
   createUserViaApi,
   currentUserId,
   gotoQueue,
-  gotoUserManagement,
   openSessionAs,
   signIn,
   uniqueEmail,
@@ -53,7 +52,8 @@ test("E2E-15 — an Administrator searches, filters, creates an IT Staff user, a
   browser,
 }) => {
   await signIn(page, ACCOUNTS.admin.email);
-  await gotoUserManagement(page);
+  await expect(page.getByRole("heading", { name: /^user management$/i })).toBeVisible();
+  await expect(page.getByTestId("user-rows")).toBeVisible();
 
   // The list shows every kind of account, with the signed-in admin marked.
   await expect(userRow(page, "Administrator (you)").first()).toBeVisible();
@@ -118,7 +118,7 @@ test("E2E-16 — duplicate emails, a missing role, and a weak password are all r
   });
 
   await signIn(page, ACCOUNTS.admin.email);
-  await gotoUserManagement(page);
+  await expect(page.getByTestId("user-rows")).toBeVisible();
   await page.getByRole("button", { name: /^create user$/i }).click();
   const panel = createPanel(page);
 
@@ -191,7 +191,7 @@ test("E2E-17 — an Administrator edits a user, sets a new initial password, the
 
   try {
     await signIn(page, ACCOUNTS.admin.email);
-    await gotoUserManagement(page);
+    await expect(page.getByTestId("user-rows")).toBeVisible();
 
     // Edit: rename and change role. Save stays disabled until something changes.
     await searchUsers(page, user.email);
@@ -273,7 +273,7 @@ test("E2E-18 — an Administrator cannot deactivate themselves or remove the las
   page,
 }) => {
   await signIn(page, ACCOUNTS.admin.email);
-  await gotoUserManagement(page);
+  await expect(page.getByTestId("user-rows")).toBeVisible();
   const myId = await currentUserId(page.request);
 
   await withSoleActiveAdministrator(page.request, myId, async () => {

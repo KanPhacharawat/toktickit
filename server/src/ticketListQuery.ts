@@ -18,39 +18,6 @@ export const TICKET_STATUSES = [
 ] as const;
 export type TicketStatus = (typeof TICKET_STATUSES)[number];
 
-/**
- * specification.md §5.4 — "Open-like" statuses, shared by every dashboard
- * drill-down. Mutable (not `readonly`) so it can be passed directly to
- * Prisma's `{ in: [...] }` filters, which want a plain `TicketStatus[]`.
- */
-export const OPEN_LIKE_STATUSES: TicketStatus[] = [
-  "New",
-  "Open",
-  "InProgress",
-  "WaitingForRequester",
-  "Reopened",
-];
-
-/**
- * api-spec.md §4.4 — `status` accepts a comma-separated list of TicketStatus
- * values, or the literal `open` alias for every open-like status. Shared by
- * `/api/tickets/mine` and `/api/tickets/queue` so a dashboard drill-down
- * link works identically on either list.
- */
-export function parseStatusListParam(raw: string): TicketStatus[] | null {
-  const trimmed = raw.trim();
-  if (trimmed === "open") return [...OPEN_LIKE_STATUSES];
-  const parts = trimmed
-    .split(",")
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-  if (parts.length === 0) return null;
-  for (const part of parts) {
-    if (!(TICKET_STATUSES as readonly string[]).includes(part)) return null;
-  }
-  return parts as TicketStatus[];
-}
-
 /** BR-23 — the sortable fields. */
 export const SORTABLE_FIELDS = [
   "ticketDate",
@@ -79,8 +46,6 @@ export interface TicketListQuery {
   categoryId: number | null;
   requestedPriority: RequestedPriority | null;
   currentStatus: TicketStatus | null;
-  /** api-spec.md §4.4 — dashboard drill-down: a status list, or the "open" alias. */
-  status: TicketStatus[] | null;
   sortBy: SortableField;
   sortOrder: SortOrder;
   page: number;
@@ -158,18 +123,6 @@ export function parseTicketListQuery(
     }
   }
 
-  // --- status (api-spec.md §4.4 dashboard drill-down) -----------------------
-  let status: TicketStatus[] | null = null;
-  if (!isBlank(raw.status)) {
-    const value = scalar(raw.status);
-    const parsed = value === null ? null : parseStatusListParam(value);
-    if (parsed === null) {
-      fieldErrors.status = "Status filter is not valid.";
-    } else {
-      status = parsed;
-    }
-  }
-
   // --- sorting (BR-23) -----------------------------------------------------
   let sortBy: SortableField = DEFAULT_SORT_BY;
   if (!isBlank(raw.sortBy)) {
@@ -222,7 +175,6 @@ export function parseTicketListQuery(
       categoryId,
       requestedPriority,
       currentStatus,
-      status,
       sortBy,
       sortOrder,
       page,

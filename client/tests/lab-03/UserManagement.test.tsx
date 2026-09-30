@@ -30,33 +30,11 @@ function mockShell() {
     data: [],
     meta: { page: 1, pageSize: 20, totalItems: 0, totalPages: 0, counts: { active: 0, unassigned: 0, assignedToMe: 0 } },
   });
-  vi.spyOn(api, "fetchAdminDashboard").mockResolvedValue({
-    generatedAt: "2026-10-01T00:00:00.000Z",
-    timeZone: "Asia/Bangkok",
-    metrics: [],
-    secondary: [],
-    byPriority: [],
-    urgentTickets: [],
-    recentTickets: [],
-    users: { active: { Requester: 0, ITStaff: 0, Administrator: 0 }, inactive: 0 },
-  });
-  vi.spyOn(api, "fetchStaffDashboard").mockResolvedValue({
-    generatedAt: "2026-10-01T00:00:00.000Z",
-    timeZone: "Asia/Bangkok",
-    metrics: [],
-    secondary: [],
-    byPriority: [],
-    urgentTickets: [],
-    recentTickets: [],
-  });
 }
 
-/** Lab 4 — Dashboard is home for an Administrator; User Management is a second stop. */
 async function openUserManagement() {
   vi.spyOn(authApi, "fetchCurrentUser").mockResolvedValue(ADMIN);
   render(<App />);
-  const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: /user management/i }));
   await screen.findByRole("heading", { name: /user management/i });
 }
 
@@ -105,14 +83,10 @@ describe("UI-34 - user list and search (AC-46)", () => {
 
     await user.type(screen.getByPlaceholderText(/name or email/i), "somchai");
     await user.click(screen.getByRole("button", { name: /^search$/i }));
-    await waitFor(() =>
-      expect(spy).toHaveBeenLastCalledWith({ search: "somchai", role: "", active: "" }),
-    );
+    await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ search: "somchai", role: "" }));
 
     await user.selectOptions(screen.getByLabelText(/^role$/i), "ITStaff");
-    await waitFor(() =>
-      expect(spy).toHaveBeenLastCalledWith({ search: "somchai", role: "ITStaff", active: "" }),
-    );
+    await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ search: "somchai", role: "ITStaff" }));
   });
 
   it("shows no-results with Clear", async () => {
@@ -329,8 +303,6 @@ describe("UI-39 - administrator safety feedback (AC-52, AC-53)", () => {
   it("shows Forbidden for a non-Administrator", async () => {
     vi.spyOn(authApi, "fetchCurrentUser").mockResolvedValue(STAFF);
     render(<App />);
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: /^ticket queue$/i }));
 
     expect(await screen.findByRole("heading", { name: /ticket queue/i })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /user management/i })).not.toBeInTheDocument();

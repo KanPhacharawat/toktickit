@@ -412,23 +412,106 @@ describe("API-26 — IT Priority (AC-38, BR-37, BR-38)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// API-27/28/29 — Lab 3's PATCH .../status is retired (Lab 4 api-spec.md
-// §3.2/§7). Its matrix, role rules, and owner-required checks are superseded
-// by POST /api/tickets/:ticketId/status, covered in full in
-// server/tests/lab-04/ticket-workflow.api.test.ts. This just confirms the
-// old route is gone for every role.
+// API-27 — permitted status walk (AC-39, BR-39)
 // ---------------------------------------------------------------------------
-describe("API-27/28/29 — PATCH .../status is retired (Lab 4 api-spec.md §3.2/§7)", () => {
-  it("returns 404 for every role, never changing the ticket", async () => {
-    const ticket = await createTicket({ summary: "Retired status route", ticketOwnerId: staff1Id });
+describe("API-27 — permitted status walk (AC-39, BR-39)", () => {
+  it("walks the full documented path", async () => {
+    const ticket = await createTicket({ summary: "Full walk", ticketOwnerId: staff1Id });
+    const path = [
+      "Open",
+      "InProgress",
+      "WaitingForRequester",
+      "InProgress",
+      "Resolved",
+      "Reopened",
+      "InProgress",
+      "Resolved",
+      "Closed",
+    ];
 
-    for (const agent of [staff1Agent, staff2Agent, adminAgent, requesterAgent]) {
-      const res = await agent.patch(`/api/tickets/${ticket.id}/status`).send({ currentStatus: "Open" });
-      expect(res.status).toBe(404);
+    for (const currentStatus of path) {
+      const res = await staff1Agent
+        .patch(`/api/tickets/${ticket.id}/status`)
+        .send({ currentStatus });
+      expect(res.status, `-> ${currentStatus}`).toBe(200);
+      expect(res.body.data.currentStatus).toBe(currentStatus);
     }
+  });
+
+  it("clears problemAppearsResolvedAt when moving to Reopened", async () => {
+    const ticket = await createTicket({
+      summary: "Reopen clears flag",
+      currentStatus: "Resolved",
+      ticketOwnerId: staff1Id,
+      problemAppearsResolvedAt: new Date(),
+    });
+
+    const res = await staff1Agent
+      .patch(`/api/tickets/${ticket.id}/status`)
+      .send({ currentStatus: "Reopened" });
+    expect(res.status).toBe(200);
+    expect(res.body.data.problemAppearsResolvedAt).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// API-28 — forbidden status changes (AC-40, BR-39)
+// ---------------------------------------------------------------------------
+describe("API-28 — forbidden status changes (AC-40, BR-39)", () => {
+  it("rejects New -> Closed with 409 INVALID_STATUS_TRANSITION", async () => {
+    const ticket = await createTicket({ summary: "Skip ahead", ticketOwnerId: staff1Id });
+    const res = await staff1Agent
+      .patch(`/api/tickets/${ticket.id}/status`)
+      .send({ currentStatus: "Closed" });
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe("INVALID_STATUS_TRANSITION");
 
     const stored = await prisma.ticket.findUniqueOrThrow({ where: { id: ticket.id } });
     expect(stored.currentStatus).toBe("New");
+  });
+
+  it("rejects the same status with 409", async () => {
+    const ticket = await createTicket({ summary: "Same status", ticketOwnerId: staff1Id });
+    const res = await staff1Agent
+      .patch(`/api/tickets/${ticket.id}/status`)
+      .send({ currentStatus: "New" });
+    expect(res.status).toBe(409);
+  });
+
+  it("rejects an unknown status with 400", async () => {
+    const ticket = await createTicket({ summary: "Unknown status", ticketOwnerId: staff1Id });
+    const res = await staff1Agent
+      .patch(`/api/tickets/${ticket.id}/status`)
+      .send({ currentStatus: "Pending" });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a non-owner IT Staff member with 403", async () => {
+    const ticket = await createTicket({ summary: "Non-owner status", ticketOwnerId: staff1Id });
+    const res = await staff2Agent
+      .patch(`/api/tickets/${ticket.id}/status`)
+      .send({ currentStatus: "Open" });
+    expect(res.status).toBe(403);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// API-29 — owner required (AC-41, BR-40)
+// ---------------------------------------------------------------------------
+describe("API-29 — owner required (AC-41, BR-40)", () => {
+  it("blocks Open on an unassigned ticket, but allows Cancelled", async () => {
+    const ticket = await createTicket({ summary: "Owner required" });
+
+    const toOpen = await adminAgent
+      .patch(`/api/tickets/${ticket.id}/status`)
+      .send({ currentStatus: "Open" });
+    expect(toOpen.status).toBe(409);
+    expect(toOpen.body.error.code).toBe("OWNER_REQUIRED");
+
+    const toCancelled = await adminAgent
+      .patch(`/api/tickets/${ticket.id}/status`)
+      .send({ currentStatus: "Cancelled" });
+    expect(toCancelled.status).toBe(200);
   });
 });
 
@@ -452,8 +535,10 @@ describe("API-30 — terminal tickets (AC-42, BR-41)", () => {
       (await staff1Agent.patch(`/api/tickets/${closed.id}/it-priority`).send({ itPriority: "LOW" }))
         .status,
     ).toBe(409);
-    // PATCH .../status is retired (Lab 4 §3.2/§7); it 404s regardless of
-    // ticket state, so it is not part of this terminal-Ticket check.
+    expect(
+      (await staff1Agent.patch(`/api/tickets/${closed.id}/status`).send({ currentStatus: "Open" }))
+        .status,
+    ).toBe(409);
     expect(
       (
         await staff1Agent
@@ -473,7 +558,7 @@ describe("API-30 — terminal tickets (AC-42, BR-41)", () => {
 // API-31 — stale updates (AC-44, BR-42)
 // ---------------------------------------------------------------------------
 describe("API-31 — stale updates (AC-44, BR-42)", () => {
-  it("rejects claim and IT Priority with an old expectedUpdatedAt", async () => {
+  it("rejects claim, IT Priority, and status with an old expectedUpdatedAt", async () => {
     const owned = await createTicket({ summary: "Stale it-priority", ticketOwnerId: staff1Id });
     const staleTime = new Date(owned.updatedAt.getTime() - 60_000).toISOString();
 
@@ -483,8 +568,11 @@ describe("API-31 — stale updates (AC-44, BR-42)", () => {
     expect(priorityRes.status).toBe(409);
     expect(priorityRes.body.error.code).toBe("STALE_TICKET");
 
-    // Status staleness now uses the Lab 4 `version` field on the new POST
-    // /api/tickets/:ticketId/status endpoint — see ticket-workflow.api.test.ts.
+    const statusRes = await staff1Agent
+      .patch(`/api/tickets/${owned.id}/status`)
+      .send({ currentStatus: "Open", expectedUpdatedAt: staleTime });
+    expect(statusRes.status).toBe(409);
+    expect(statusRes.body.error.code).toBe("STALE_TICKET");
 
     const unowned = await createTicket({ summary: "Stale claim" });
     const claimRes = await staff1Agent

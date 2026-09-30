@@ -42,13 +42,6 @@ const VALID_DESCRIPTION = "The battery reaches zero within about an hour of use.
 function mockReferenceData() {
   vi.spyOn(api, "fetchCategories").mockResolvedValue(CATEGORIES);
   vi.spyOn(api, "fetchRelatedSystems").mockResolvedValue(RELATED_SYSTEMS);
-  vi.spyOn(api, "fetchRequesterDashboard").mockResolvedValue({
-    generatedAt: "2026-10-01T00:00:00.000Z",
-    timeZone: "Asia/Bangkok",
-    metrics: [],
-    needsAttention: [],
-    recentTickets: [],
-  });
 }
 
 /** The Create Ticket form, so queries are not confused by the shell nav. */

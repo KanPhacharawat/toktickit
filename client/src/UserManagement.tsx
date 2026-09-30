@@ -586,37 +586,14 @@ function EditUserPanel({
   );
 }
 
-/** Lab 4 ui-spec.md §3.2 — seeded from the Admin Dashboard's Users card. */
-export interface UserListDrillDownFilters {
-  role?: AdminRole;
-  active?: "true" | "false";
-}
-
-export default function UserManagement({
-  onSelfDeactivated,
-  initialFilters,
-  filterToken,
-}: {
-  onSelfDeactivated: () => void;
-  initialFilters?: UserListDrillDownFilters;
-  filterToken?: number;
-}) {
+export default function UserManagement({ onSelfDeactivated }: { onSelfDeactivated: () => void }) {
   const { user: currentUser, retrySessionCheck } = useAuth();
 
   const [searchDraft, setSearchDraft] = useState("");
-  const [controls, setControls] = useState<{ search: string; role: AdminRole | ""; active: "" | "true" | "false" }>({
+  const [controls, setControls] = useState<{ search: string; role: AdminRole | "" }>({
     search: "",
     role: "",
-    active: "",
   });
-
-  // Lab 4 ui-spec.md §3.2 — a dashboard Users card seeds the role/active filter.
-  useEffect(() => {
-    if (!filterToken) return;
-    setSearchDraft("");
-    setControls({ search: "", role: initialFilters?.role ?? "", active: initialFilters?.active ?? "" });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterToken]);
 
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
@@ -667,7 +644,7 @@ export default function UserManagement({
 
   if (!currentUser) return null;
 
-  const filtersActive = Boolean(controls.search || controls.role || controls.active);
+  const filtersActive = Boolean(controls.search || controls.role);
 
   return (
     <main className="container py-4">
@@ -688,22 +665,6 @@ export default function UserManagement({
       {successBanner && (
         <div className="zen-success-banner mb-3" role="status">
           {successBanner}
-        </div>
-      )}
-
-      {controls.active && (
-        <div className="zen-success-banner d-flex flex-wrap align-items-center gap-2 mb-3" role="status">
-          <span>{`Filtered: ${controls.active === "true" ? "Active" : "Inactive"} users`}</span>
-          <button
-            type="button"
-            className="btn btn-sm zen-btn-outline"
-            onClick={() => {
-              setSearchDraft("");
-              setControls({ search: "", role: "", active: "" });
-            }}
-          >
-            Clear
-          </button>
         </div>
       )}
 
@@ -761,7 +722,7 @@ export default function UserManagement({
               disabled={!filtersActive}
               onClick={() => {
                 setSearchDraft("");
-                setControls({ search: "", role: "", active: "" });
+                setControls({ search: "", role: "" });
               }}
             >
               Clear
@@ -803,7 +764,7 @@ export default function UserManagement({
             className="btn zen-btn-outline"
             onClick={() => {
               setSearchDraft("");
-              setControls({ search: "", role: "", active: "" });
+              setControls({ search: "", role: "" });
             }}
           >
             Clear

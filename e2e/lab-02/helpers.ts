@@ -95,23 +95,7 @@ async function signInAs(page: Page, email: string, expectedName?: string) {
     // Submit with the keyboard, not a click: a mouse click would switch the
     // browser's :focus-visible heuristic off for keyboard checks that follow.
     await page.getByLabel(/^password/i).press("Enter");
-
-    // Requester D and E are seeded with mustChangePassword: true
-    // (server/prisma/seedData.ts); complete that mandatory screen so this
-    // helper still lands on the signed-in shell for every seeded Requester.
-    const changePassword = page.getByRole("heading", { name: /change your password/i });
-    const shellReady = page.getByTestId("signed-in-user");
-    await expect(changePassword.or(shellReady).first()).toBeVisible();
-    if (await changePassword.isVisible()) {
-      const newPassword = "E2e-Initial-Pass1!";
-      // getByLabel would also match each field's "Show <label>" toggle
-      // button (its own accessible name repeats the field label).
-      await page.getByRole("textbox", { name: /current \(temporary\) password/i }).fill(E2E_LOGIN.password);
-      await page.getByRole("textbox", { name: /^new password/i }).fill(newPassword);
-      await page.getByRole("textbox", { name: /^confirm new password/i }).fill(newPassword);
-      await page.getByRole("button", { name: /^save password$/i }).click();
-    }
-    await expect(shellReady).toBeVisible();
+    await expect(page.getByTestId("signed-in-user")).toBeVisible();
   }
   if (expectedName) await expect(shell).toHaveText(expectedName);
 }

@@ -14,8 +14,7 @@ import {
   type TicketListRow,
 } from "./api.js";
 import { useAuth } from "./AuthContext.js";
-import { priorityIcon, priorityLabel } from "./ticketFormRules.js";
-import { statusIcon } from "./actionsTakenRules.js";
+import { priorityLabel } from "./ticketFormRules.js";
 
 /** The filter/search/sort/page state that drives one request. */
 interface ListControls {
@@ -23,8 +22,6 @@ interface ListControls {
   categoryId: string;
   requestedPriority: string;
   currentStatus: string;
-  /** Lab 4 — dashboard drill-down: an exact TicketStatus, or the "open" alias (api-spec.md §4.1). */
-  status: string;
   sortBy: SortableField;
   sortOrder: SortOrder;
   page: number;
@@ -37,21 +34,11 @@ const DEFAULT_CONTROLS: ListControls = {
   categoryId: "",
   requestedPriority: "",
   currentStatus: "",
-  status: "",
   sortBy: "updatedAt",
   sortOrder: "desc",
   page: 1,
   pageSize: 10,
 };
-
-/**
- * Lab 4 ui-spec.md §4 — the shape the Requester Dashboard's metric cards pass
- * to seed My Tickets. `status` matches the server's dashboard drill-down
- * param (api-spec.md §4.1): an exact TicketStatus, or the "open" alias.
- */
-export interface MyTicketsDrillDownFilters {
-  status?: string;
-}
 
 const SORT_LABELS: Record<SortableField, string> = {
   updatedAt: "Last Updated",
@@ -70,24 +57,17 @@ function hasActiveFilters(controls: ListControls): boolean {
     controls.search ||
       controls.categoryId ||
       controls.requestedPriority ||
-      controls.currentStatus ||
-      controls.status,
+      controls.currentStatus,
   );
 }
 
 export default function MyTickets({
   onCreateTicket,
   onOpenTicket,
-  initialFilters,
-  filterToken,
 }: {
   onCreateTicket?: () => void;
   /** Opens Ticket Detail for one owned ticket. */
   onOpenTicket?: (ticketId: number) => void;
-  /** Lab 4 ui-spec.md §4 — seeds the list from a Requester Dashboard metric card. */
-  initialFilters?: MyTicketsDrillDownFilters;
-  /** Bump so the same filters (e.g. clicking "Closed" twice) still re-apply. */
-  filterToken?: number;
 }) {
   const { user } = useAuth();
 
@@ -99,15 +79,6 @@ export default function MyTickets({
   // Collapsed by default: the list is what the user came for, and the six
   // filter controls push it below the fold otherwise.
   const [filtersOpen, setFiltersOpen] = useState(false);
-
-  // Lab 4 ui-spec.md §4 — a dashboard metric card seeds the list's status
-  // filter; no `initialFilters` means "reset to the defaults".
-  useEffect(() => {
-    if (!filterToken) return;
-    setSearchDraft("");
-    setControls({ ...DEFAULT_CONTROLS, status: initialFilters?.status ?? "" });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterToken]);
 
   const [rows, setRows] = useState<TicketListRow[]>([]);
   const [meta, setMeta] = useState<TicketListMeta | null>(null);
@@ -142,7 +113,6 @@ export default function MyTickets({
       categoryId: controls.categoryId,
       requestedPriority: controls.requestedPriority,
       currentStatus: controls.currentStatus,
-      status: controls.status || undefined,
       sortBy: controls.sortBy,
       sortOrder: controls.sortOrder,
       page: controls.page,
@@ -332,9 +302,7 @@ export default function MyTickets({
               id="filter-status"
               className="form-select zen-select"
               value={controls.currentStatus}
-              onChange={(e) =>
-                updateControls({ currentStatus: e.target.value, status: "" })
-              }
+              onChange={(e) => updateControls({ currentStatus: e.target.value })}
             >
               <option value="">All statuses</option>
               {TICKET_STATUSES.map((status) => (
@@ -520,13 +488,11 @@ export default function MyTickets({
                       <span
                         className={`zen-badge zen-priority-${row.requestedPriority.toLowerCase()}`}
                       >
-                        {priorityIcon(row.requestedPriority)}
                         {priorityLabel(row.requestedPriority)}
                       </span>
                     </td>
                     <td>
                       <span className="zen-badge zen-status">
-                        {statusIcon(row.currentStatus)}
                         {statusLabel(row.currentStatus)}
                       </span>
                       {row.problemAppearsResolvedAt && (

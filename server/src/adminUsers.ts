@@ -88,16 +88,6 @@ adminUsersRouter.get(
       }
     }
 
-    // api-spec.md §4.4 — dashboard drill-down: active=true|false.
-    let active: boolean | null = null;
-    const rawActive = req.query.active;
-    if (rawActive !== undefined && rawActive !== "") {
-      const value = scalar(rawActive);
-      if (value === "true") active = true;
-      else if (value === "false") active = false;
-      else fieldErrors.active = "active must be true or false.";
-    }
-
     if (Object.keys(fieldErrors).length > 0) {
       return fail(res, 400, "VALIDATION_ERROR", "The request contains invalid data.", { fieldErrors });
     }
@@ -106,7 +96,6 @@ adminUsersRouter.get(
       const where = {
         deletedAt: null,
         ...(role ? { role: role as never } : {}),
-        ...(active !== null ? { isActive: active } : {}),
         ...(search
           ? {
               OR: [

@@ -3,11 +3,9 @@
 TokTickIT is an IT Service Desk application for CPE334 Software Engineering course.
 The project uses a React frontend, an Express backend, PostgreSQL, and Prisma.
 
-It has real authentication and three roles — **Requester**, **IT Staff**, and
-**Administrator** — so people sign in with an email and password and see only
-what their role allows. As of Lab 4 it also records **Actions Taken** on a
-Ticket, enforces the full Ticket status workflow (including a resolution
-gate), and gives every role a dashboard.
+As of Lab 3 it has real authentication and three roles — **Requester**,
+**IT Staff**, and **Administrator** — so people sign in with an email and
+password and see only what their role allows.
 
 ## Tech Stack
 
@@ -39,8 +37,6 @@ toktickit/
 │   ├── tests/lab-02/              Lab 2 unit, UI and style tests
 │   ├── tests/lab-03/              Lab 3 role navigation, login, queue, ticket detail,
 │   │                              user management tests
-│   ├── tests/lab-04/              Lab 4 Actions Taken, workflow, dashboard, duplicate-submit
-│   │                              and form-resilience tests
 │   ├── .env.example
 │   ├── package.json
 │   └── vite.config.ts
@@ -48,10 +44,8 @@ toktickit/
 ├── server/                        Express + Prisma backend
 │   ├── prisma/
 │   │   ├── schema.prisma
-│   │   ├── migrations/            Includes the Lab 4 migration's rollback.sql
+│   │   ├── migrations/
 │   │   ├── seed.ts
-│   │   ├── seedData.ts            Accounts, categories, related systems
-│   │   ├── seedTickets.ts         Lab 4 demo Tickets and Actions Taken
 │   │   └── verify-lab2.sql        Manual database verification script
 │   ├── scripts/
 │   │   └── clean-e2e-data.ts      Removes data left by E2E runs
@@ -60,8 +54,6 @@ toktickit/
 │   ├── tests/lab-02/              Lab 2 unit and API tests
 │   ├── tests/lab-03/              Lab 3 auth, authorization, queue, ticket operation,
 │   │                              user admin, seed and migration tests
-│   ├── tests/lab-04/              Lab 4 Actions Taken, workflow, dashboard, migration,
-│   │                              rollback, seed and performance-smoke tests
 │   ├── uploads/                   Attachment files (gitignored)
 │   ├── .env.example
 │   ├── package.json
@@ -70,19 +62,15 @@ toktickit/
 ├── e2e/lab-02/                    Playwright E2E, responsive and visual tests (Requester)
 ├── e2e/lab-03/                    Playwright E2E, accessibility, responsive and visual
 │                                  tests for every role
-├── e2e/lab-04/                    Playwright E2E for Actions Taken, ticket resolution,
-│                                  dashboards, accessibility and responsive/visual checks
 │
 ├── docs/
 │   ├── lab-01/
 │   ├── lab-02/                    Specification, API spec, UI spec, test plan,
 │   │                              peer review record, AI use record
-│   ├── lab-03/                    Same set of documents for Lab 3
-│   └── lab-04/                    Same set of documents for Lab 4
+│   └── lab-03/                    Same set of documents for Lab 3
 │
 ├── artifacts/lab-02/screenshots/  Desktop/tablet/mobile visual evidence (Lab 2)
 ├── artifacts/lab-03/screenshots/  Desktop/tablet/mobile visual evidence (Lab 3)
-├── artifacts/lab-04/screenshots/  Desktop/tablet/mobile visual evidence (Lab 4)
 │
 ├── .gitignore
 ├── playwright.config.ts
@@ -219,40 +207,14 @@ npx prisma migrate dev
 
 Do not run database commands against a database containing important data without checking the migration changes first.
 
-Then seed the reference data, development accounts, and demo Tickets:
+Then seed the reference data and development accounts:
 
 ```bash
 npm run prisma:seed
 ```
 
 The seed is idempotent. Every run resets the accounts below to the documented
-password and flags, and upserts the same fixture Tickets and Actions Taken by
-their Ticket Number / idempotency key; accounts and Tickets created through the
-app are never touched.
-
-### Rolling back the Lab 4 migration
-
-`server/prisma/migrations/20261001100000_lab4_actions_taken_workflow/rollback.sql`
-undoes exactly that migration: it drops the `ActionTaken` and
-`TicketStatusHistory` tables, the new `Ticket` columns and indexes, and the
-`ActionStatus` enum. It does not touch any Lab 1–3 table or row.
-
-```bash
-# 1. Back up first — this is destructive to Lab 4 data.
-pg_dump -h localhost -U toktickit -d toktickit -f backup-before-rollback.sql
-
-# 2. Apply the rollback.
-psql -h localhost -U toktickit -d toktickit -f server/prisma/migrations/20261001100000_lab4_actions_taken_workflow/rollback.sql
-
-# 3. Tell Prisma the migration is no longer applied, so a future
-#    `prisma migrate deploy` re-applies it instead of skipping it.
-cd server
-npx prisma migrate resolve --rolled-back 20261001100000_lab4_actions_taken_workflow
-```
-
-`server/tests/lab-04/rollback.test.ts` exercises this whole sequence
-(migrate → seed → rollback → migrate again) against the disposable
-`MIGRATION_TEST_DATABASE_URL` database, so it never touches real data.
+password and flags; accounts created in the app are never touched.
 
 ### Development accounts (local development only)
 
@@ -349,15 +311,6 @@ transitions, queue query, user validation) and API tests for authentication,
 the authorization matrix, the staff queue and ticket operations, comments and
 notes, and user administration. `migration.test.ts` migrates Lab 2 data to the
 Lab 3 schema and needs `MIGRATION_TEST_DATABASE_URL` (see above).
-
-Lab 4 adds `tests/lab-04/migration.test.ts` (replays a Lab 3 database through
-the Lab 4 migration and checks every existing User/Ticket/Attachment/Comment/
-Note row survives unchanged), `tests/lab-04/rollback.test.ts` (migrate → seed →
-`rollback.sql` → migrate again on a scratch database), and
-`tests/lab-04/seed.test.ts` (seed idempotency for the new Tickets and Actions
-Taken, and that the fixtures cover all 8 statuses, all 4 priorities,
-assigned/unassigned, and 0/1/many Actions Taken per Ticket). These also need
-`MIGRATION_TEST_DATABASE_URL`.
 
 Because these share one database, the suite runs one file at a time
 (`fileParallelism: false` in `vitest.config.ts`).
@@ -510,11 +463,6 @@ Lab 3 followed this flow: feature branches (`feature/lab3-specification`,
 `-ticket-queue`, `-ticket-operation`, `feature/admin-management`, `-lab3-e2e-visual`,
 `-lab3-release`) merged into `lab3-staging`, which was released to `main` in one PR.
 
-Lab 4 follows the same flow: feature branches (`feature/lab4-spec`,
-`-lab4-test-plan`, `-lab4-db-migration`, `-lab4-actions-taken-api`, and the
-remaining workflow/dashboard/hardening branches) merge into `lab4-staging`,
-which is released to `main` by `feature/lab4-release`.
-
 Lab 2 feature branches:
 
 ```text
@@ -598,46 +546,6 @@ the IT Staff and Administrator sides of the service desk.
   tickets intact
 - Accessibility (keyboard flows and axe scans) and responsive checks for every role
 
-### Lab 4 — Actions Taken, ticket workflow, dashboards, and hardening
-
-Lab 4 adds Actions Taken, the Ticket resolution workflow, dashboards, and
-navigation for every role, then a regression/hardening pass over Labs 1–3
-(see [`docs/lab-04/specification.md`](docs/lab-04/specification.md) for the
-full sprint scope):
-
-- `ActionTaken` and `TicketStatusHistory` models, and new `Ticket` columns
-  (`version`, `resolutionSummary`, `resolvedAt`, `closedAt`, `cancelledAt`,
-  `cancelReason`, `requesterResolvedIndicatedAt`) — additive migration
-  `20261001100000_lab4_actions_taken_workflow`, with a tested `rollback.sql`
-- Backfill of `resolvedAt`/`closedAt`/`resolutionSummary` for legacy
-  Resolved/Closed Tickets, and one initial `TicketStatusHistory` row per
-  existing Ticket
-- Seed data extended with 16 demo Tickets and their Actions Taken, covering
-  every `TicketStatus` and `ItPriority` value, assigned and unassigned
-  Tickets, 0/1/many Actions Taken per Ticket, a Planned action, a Cancelled
-  action, an action performed by IT Staff other than the Ticket Owner, and a
-  Requester with zero Tickets
-- Actions Taken API and UI: create/edit/complete/cancel, idempotent create
-  (`clientRequestId`), optimistic concurrency (`version`), and a Closed/
-  Cancelled Ticket locks the section read-only
-- Ticket workflow: `POST /api/tickets/:ticketId/status` replaces Lab 3's
-  `PATCH .../status` (retired — 404), enforcing the role/status transition
-  matrix and the Resolved-state resolution gate (owner present, ≥1 Completed
-  action, no Planned action, follow-ups acknowledged, a resolution summary);
-  a Requester may indicate "problem appears resolved" (advisory only) and
-  Reopen a Resolved Ticket they own; every change is recorded in
-  `TicketStatusHistory`
-- Requester, IT Staff, and Administrator dashboards with metric cards,
-  drill-down navigation, and a role-specific landing page after login
-- A navigation shell with a Dashboard nav item per role, a mobile hamburger
-  drawer, and Forbidden/Not Found route guards
-- `GET /api/health` reports real DB connectivity (`200 {status:"ok",
-  db:"up", ...}` / `503 {status:"degraded", db:"down"}`), replacing the
-  Lab 1 stub
-- A regression/hardening pass: the full Lab 1–3 suite re-verified against
-  the Lab 4 schema/API, duplicate-submit and form-resilience coverage across
-  every form, and a performance smoke test on the dashboard endpoints
-
 ### API endpoints
 
 All routes except health and login require a signed-in session. The role column
@@ -660,14 +568,7 @@ is proven by direct API calls as well as by the UI.
 | `POST` | `/api/tickets/:ticketId/claim` | IT Staff, Administrator |
 | `PATCH` | `/api/tickets/:ticketId/owner` | IT Staff (unassigned), Owner, Administrator |
 | `PATCH` | `/api/tickets/:ticketId/it-priority` | Owner, Administrator |
-| `POST` | `/api/tickets/:ticketId/status` | Per the role/status transition matrix (`docs/lab-04/api-spec.md` §3) |
-| `GET` | `/api/tickets/:ticketId/transitions` | Requester (own), IT Staff, Administrator |
-| `GET` | `/api/tickets/:ticketId/status-history` | Requester (own), IT Staff, Administrator |
-| `POST` | `/api/tickets/:ticketId/requester-resolution` | Requester (own) |
-| `GET`, `POST` | `/api/tickets/:ticketId/actions` | Requester (own, read-only), IT Staff, Administrator |
-| `PATCH` | `/api/tickets/:ticketId/actions/:actionId` | IT Staff, Administrator |
-| `POST` | `/api/tickets/:ticketId/actions/:actionId/complete` | IT Staff, Administrator |
-| `POST` | `/api/tickets/:ticketId/actions/:actionId/cancel` | IT Staff, Administrator |
+| `PATCH` | `/api/tickets/:ticketId/status` | Owner, Administrator |
 | `GET`, `POST` | `/api/tickets/:ticketId/public-comments` | Requester (own), IT Staff, Administrator |
 | `GET`, `POST` | `/api/tickets/:ticketId/internal-notes` | IT Staff, Administrator |
 | `POST` | `/api/tickets/:ticketId/problem-resolved` | Requester (own) |
@@ -676,18 +577,11 @@ is proven by direct API calls as well as by the UI.
 | `GET`, `POST` | `/api/admin/users` | Administrator |
 | `GET`, `PATCH` | `/api/admin/users/:userId` | Administrator |
 | `POST` | `/api/admin/users/:userId/initial-password` | Administrator |
-| `GET` | `/api/dashboard/requester` | Requester |
-| `GET` | `/api/dashboard/staff` | IT Staff, Administrator |
-| `GET` | `/api/dashboard/admin` | Administrator |
-
-`PATCH /api/tickets/:ticketId/status` (Lab 3) is retired — it now 404s for
-every role; use `POST` above instead.
 
 The full request and response contract, including error shapes, is in
-[`docs/lab-04/api-spec.md`](docs/lab-04/api-spec.md) (superseding
-`docs/lab-03/api-spec.md`, kept for history). The Lab 2 routes under
+[`docs/lab-03/api-spec.md`](docs/lab-03/api-spec.md). The Lab 2 routes under
 `/api/requesters/:requesterId/...` and `/api/development-requesters` were
-replaced by the routes above; the mapping is at the end of the Lab 3 document.
+replaced by the routes above; the mapping is at the end of that document.
 
 ## Documentation
 
@@ -705,12 +599,6 @@ replaced by the routes above; the mapping is at the end of the Lab 3 document.
 | [`docs/lab-03/tests.md`](docs/lab-03/tests.md)                 | Lab 3 test plan and traceability             |
 | [`docs/lab-03/reviewer.md`](docs/lab-03/reviewer.md)           | Lab 3 peer review record                     |
 | [`docs/lab-03/ai-use.md`](docs/lab-03/ai-use.md)               | Lab 3 AI use and reflection                  |
-| [`docs/lab-04/specification.md`](docs/lab-04/specification.md) | Lab 4 requirements, business rules, acceptance criteria, Definition of Done |
-| [`docs/lab-04/api-spec.md`](docs/lab-04/api-spec.md)           | Lab 4 endpoint contracts, authorization matrix (supersedes `docs/lab-03/api-spec.md`) |
-| [`docs/lab-04/ui-spec.md`](docs/lab-04/ui-spec.md)             | Lab 4 screens per role, dashboards, accessibility checklist |
-| [`docs/lab-04/tests.md`](docs/lab-04/tests.md)                 | Lab 4 test plan and AC-01–AC-39 traceability |
-| [`docs/lab-04/reviewer.md`](docs/lab-04/reviewer.md)           | Lab 4 peer review record                     |
-| [`docs/lab-04/ai-use.md`](docs/lab-04/ai-use.md)               | Lab 4 AI use and reflection                  |
 
 ## Visual Evidence
 
@@ -739,17 +627,6 @@ A screenshot is only written after the automated visual checklist passes for
 that state (no horizontal page scroll, no clipped button or label, everything
 inside the viewport), and the `VIS-coverage` test fails if any required screen
 is missing at any of the three sizes.
-
-Lab 4 screenshots are written to `artifacts/lab-04/screenshots/`, one folder
-per feature area:
-
-```text
-actions-taken/    requester-dashboard/    staff-dashboard/
-```
-
-Each folder holds `desktop-`, `tablet-`, and `mobile-` prefixed images for the
-list, create, edit, complete, cancel, 409-conflict, empty, and populated
-states.
 
 ## License
 

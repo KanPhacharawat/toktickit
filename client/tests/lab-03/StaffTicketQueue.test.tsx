@@ -64,16 +64,13 @@ function mockCategories() {
 }
 
 /**
- * Renders the whole app signed in as staff and navigates to the Ticket
- * Queue — Lab 4 lands IT Staff on the Dashboard first (ui-spec.md §2/§3).
- * Callers must set up their `fetchQueue`/`fetchCategories` mocks *before*
- * calling this, since the queue screen fetches on mount.
+ * Renders the whole app signed in as staff. Callers must set up their
+ * `fetchQueue`/`fetchCategories` mocks *before* calling this, since the
+ * queue screen fetches on mount.
  */
 async function openQueue() {
   vi.spyOn(authApi, "fetchCurrentUser").mockResolvedValue(STAFF);
   render(<App />);
-  const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: "Ticket Queue" }));
   await screen.findByRole("heading", { name: /ticket queue/i });
 }
 

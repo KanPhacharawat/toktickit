@@ -105,8 +105,7 @@ Repository: https://github.com/KanPhacharawat/toktickit
 
 ### PR #98 - Merge lab4-staging into main (lab4-staging → main)
 
-- **Reviewer:** Lab 4 release look good to me. Approve for merge
-- **Response:** Thank you kub. You can merge now
+I got a problem in this PR because I wrong press and merge without reviewer approve and I try to revert code back but I think it some kind of git problem because I already revert the main back to before lab4-staging merge in but it doesn't work.
 
 ## Review outcome summary
 

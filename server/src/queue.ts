@@ -7,6 +7,7 @@ import {
   buildQueueOrderBy,
   parseQueueQuery,
 } from "./queueQuery.js";
+import { OPEN_LIKE_STATUSES } from "./ticketListQuery.js";
 
 export const queueRouter = Router();
 
@@ -46,9 +47,23 @@ queueRouter.get(
         ...(query.statusGroup === "active" ? { currentStatus: { in: ACTIVE_STATUSES } } : {}),
         ...(query.statusGroup === "closed" ? { currentStatus: { in: ["Closed", "Cancelled"] } } : {}),
         ...(query.currentStatus !== null ? { currentStatus: query.currentStatus } : {}),
+        // api-spec.md §4.4 — dashboard drill-down `status` (list or "open" alias).
+        ...(query.status !== null ? { currentStatus: { in: query.status } } : {}),
         ...(query.ownership === "mine" ? { ticketOwnerId: callerId } : {}),
         ...(query.ownership === "unassigned" ? { ticketOwnerId: null } : {}),
         ...(query.itPriority !== null ? { itPriority: query.itPriority } : {}),
+        // api-spec.md §4.4 — dashboard drill-down `followUpFor=me` (BR-40).
+        // The open-like restriction is baked in (not a separate `status=open`
+        // param) so this list's total always matches the myOpenFollowUps
+        // metric, exactly like its documented drillDown link.
+        ...(query.followUpForMe
+          ? {
+              currentStatus: { in: OPEN_LIKE_STATUSES },
+              actionsTaken: {
+                some: { performedById: callerId, status: "Completed", followUpRequired: true },
+              },
+            }
+          : {}),
         ...(query.requestedPriority !== null
           ? { requestedPriority: query.requestedPriority }
           : {}),

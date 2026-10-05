@@ -251,12 +251,17 @@ for (const [name, size] of Object.entries(VIEWPORTS)) {
 test("VIS-empty — the My Tickets empty state is captured at every width", async ({
   page,
 }) => {
+  // Requester E is the account Lab 4's seed data (server/prisma/seedTickets.ts)
+  // deliberately leaves with zero Tickets for this exact empty-dashboard/
+  // empty-list demo; Requester C picked up seeded demo Tickets of its own
+  // once that seed data grew, so it is no longer reliably empty. Requester E
+  // needs its one-time mandatory password change (selectRequester/signInAs
+  // handles that), so sign in once here rather than once per viewport —
+  // repeating the mandatory-change flow on the same account isn't idempotent.
+  await selectRequester(page, "Requester E");
+
   for (const [name, size] of Object.entries(VIEWPORTS)) {
     await page.setViewportSize(size);
-
-    // Requester C creates no tickets in any spec, so their list stays empty. (Requester D
-    // and E are seeded needing a password change, so they cannot reach My Tickets.)
-    await selectRequester(page, "Requester C");
     await gotoMyTickets(page);
 
     await expect(page.getByTestId("empty-state")).toBeVisible();
@@ -264,7 +269,7 @@ test("VIS-empty — the My Tickets empty state is captured at every width", asyn
     await expectNotClipped(page.getByTestId("empty-state"), "empty state");
 
     await captureScreen(page, "my-tickets", `${name}-empty` as ViewportName);
-
-    await signOut(page);
   }
+
+  await signOut(page);
 });

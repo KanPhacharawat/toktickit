@@ -185,6 +185,8 @@ export interface TicketListParams {
   categoryId?: string;
   requestedPriority?: string;
   currentStatus?: string;
+  /** api-spec.md §4.1 — dashboard drill-down: an exact TicketStatus, or the "open" alias. */
+  status?: string;
   sortBy?: SortableField;
   sortOrder?: SortOrder;
   page?: number;
@@ -278,7 +280,21 @@ export interface TicketDetailPermissions {
   canReportProblemResolved: boolean;
 }
 
-export interface TicketDetail {
+/**
+ * Lab 4 api-spec.md §7 point 3 — fields the Ticket Workflow panel needs,
+ * added to both the Requester and Staff Ticket Detail responses.
+ */
+export interface TicketWorkflowFields {
+  version: number;
+  resolutionSummary: string | null;
+  resolvedAt: string | null;
+  closedAt: string | null;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  requesterResolvedIndicatedAt: string | null;
+}
+
+export interface TicketDetail extends TicketWorkflowFields {
   id: number;
   ticketNumber: string;
   ticketDate: string;
@@ -312,7 +328,7 @@ export interface StaffTicketDetailPermissions {
   canManageAttachments: boolean;
 }
 
-export interface StaffTicketDetail {
+export interface StaffTicketDetail extends TicketWorkflowFields {
   id: number;
   ticketNumber: string;
   ticketDate: string;
@@ -520,19 +536,8 @@ export function setItPriority(
   );
 }
 
-/** api-spec.md §9.4 — change status, per the transition matrix. */
-export function setTicketStatus(
-  ticketId: number,
-  currentStatus: string,
-  expectedUpdatedAt?: string,
-): Promise<StaffTicketDetail> {
-  return staffOperation(
-    `/api/tickets/${ticketId}/status`,
-    "PATCH",
-    { currentStatus, ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}) },
-    "Could not update the status. Please try again.",
-  );
-}
+// PATCH /api/tickets/:ticketId/status (Lab 3 §9.4) is retired — Lab 4
+// api-spec.md §3.2/§7. Use postTicketStatus (below) instead.
 
 /** BR-10 — upload is scoped to a Ticket the Requester owns. */
 export async function uploadAttachment(
@@ -772,10 +777,14 @@ export interface QueueParams {
   search?: string;
   statusGroup?: StatusGroup | "";
   currentStatus?: string;
+  /** api-spec.md §4.4 — dashboard drill-down: a status list, or the "open" alias. */
+  status?: string;
   ownership?: Ownership | "";
   itPriority?: string;
   requestedPriority?: string;
   categoryId?: string;
+  /** api-spec.md §4.4 — dashboard drill-down: my open follow-ups. */
+  followUpFor?: "me" | "";
   sortBy?: QueueSortableField;
   sortOrder?: SortOrder;
   page?: number;
@@ -966,6 +975,510 @@ export async function postInternalNote(ticketId: number, body: string): Promise<
 }
 
 // ---------------------------------------------------------------------------
+// Actions Taken (Lab 4 api-spec.md §2)
+// ---------------------------------------------------------------------------
+
+export type ActionStatus = "Planned" | "Completed" | "Cancelled";
+
+export interface ActionUserSummary {
+  id: number;
+  name: string;
+  role: string;
+}
+
+export interface ActionTaken {
+  id: number;
+  ticketId: number;
+  actionAt: string;
+  description: string;
+  result: string | null;
+  status: ActionStatus;
+  performedBy: ActionUserSummary;
+  isPerformedByOwner: boolean;
+  followUpRequired: boolean;
+  followUpNote: string | null;
+  attachmentNotes: string | null;
+  completedAt: string | null;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  /** Omitted from the response for a Requester (api-spec.md §1.2). */
+  createdBy?: ActionUserSummary;
+  updatedBy?: ActionUserSummary | null;
+  createdAt: string;
+  updatedAt: string;
+  version: number;
+}
+
+/**
+ * api-spec.md §2.3 — a 409 STALE_UPDATE reply carries the current record as a
+ * sibling of `error`, so the caller can offer "Reload latest" / "Copy my
+ * changes" from this one thrown error.
+ */
+export class StaleActionError extends ApiError {
+  readonly current: ActionTaken;
+  constructor(message: string, options: { status: number; current: ActionTaken }) {
+    super(message, { status: options.status, code: "STALE_UPDATE" });
+    this.current = options.current;
+  }
+}
+
+async function actionFetch(path: string, init: RequestInit): Promise<{ res: Response; body: unknown }> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      ...init,
+      credentials: "include",
+      headers: init.body
+        ? { "Content-Type": "application/json", ...init.headers }
+        : init.headers,
+    });
+  } catch {
+    throw new ApiError("Could not reach the server. Please try again.", {
+      status: 0,
+      code: "NETWORK_ERROR",
+    });
+  }
+  return { res, body: await readJson(res) };
+}
+
+function actionFromBody(body: unknown): ActionTaken {
+  const data = (body as { data?: ActionTaken } | null)?.data;
+  if (!data?.id) {
+    throw new ApiError("The action response was not understood.", {
+      status: 0,
+      code: "BAD_RESPONSE",
+    });
+  }
+  return data;
+}
+
+/** Throws StaleActionError for a 409 STALE_UPDATE reply, otherwise the usual ApiError. */
+function throwActionError(res: Response, body: unknown, fallback: string): never {
+  notifyIfSessionExpired(res.status);
+  const code = (body as { error?: { code?: string } } | null)?.error?.code;
+  const current = (body as { current?: ActionTaken } | null)?.current;
+  if (res.status === 409 && code === "STALE_UPDATE" && current?.id) {
+    const message = (body as { error?: { message?: string } } | null)?.error?.message;
+    throw new StaleActionError(typeof message === "string" ? message : fallback, {
+      status: res.status,
+      current,
+    });
+  }
+  throw toApiError(res, body, fallback);
+}
+
+/** api-spec.md §2.1 — FR-09 stable order (actionAt, createdAt, id) is server-side. */
+export async function fetchActionsTaken(
+  ticketId: number,
+): Promise<{ items: ActionTaken[]; total: number }> {
+  const { res, body } = await actionFetch(`/api/tickets/${ticketId}/actions`, { method: "GET" });
+  if (!res.ok) throwActionError(res, body, "Could not load actions taken. Please try again.");
+  const parsed = body as { items?: ActionTaken[]; total?: number } | null;
+  if (!Array.isArray(parsed?.items)) {
+    throw new ApiError("The action list response was not understood.", {
+      status: res.status,
+      code: "BAD_RESPONSE",
+    });
+  }
+  return { items: parsed.items, total: parsed.total ?? parsed.items.length };
+}
+
+export interface CreateActionInput {
+  clientRequestId: string;
+  actionAt: string;
+  description: string;
+  status: "Planned" | "Completed";
+  result?: string;
+  performedById?: number;
+  followUpRequired: boolean;
+  followUpNote?: string;
+  attachmentNotes?: string;
+}
+
+/** api-spec.md §2.2 — 201 on create, 200 on an idempotent replay; both carry the same shape. */
+export async function createActionTaken(
+  ticketId: number,
+  input: CreateActionInput,
+): Promise<ActionTaken> {
+  const { res, body } = await actionFetch(`/api/tickets/${ticketId}/actions`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throwActionError(res, body, "Could not save the action. Please try again.");
+  return actionFromBody(body);
+}
+
+export interface EditActionInput {
+  version: number;
+  actionAt?: string;
+  description?: string;
+  result?: string;
+  performedById?: number;
+  followUpRequired?: boolean;
+  followUpNote?: string;
+  attachmentNotes?: string;
+}
+
+/** api-spec.md §2.3 — every editable field is optional; `version` is required. */
+export async function editActionTaken(
+  ticketId: number,
+  actionId: number,
+  input: EditActionInput,
+): Promise<ActionTaken> {
+  const { res, body } = await actionFetch(`/api/tickets/${ticketId}/actions/${actionId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throwActionError(res, body, "Could not save the action. Please try again.");
+  return actionFromBody(body);
+}
+
+export interface CompleteActionInput {
+  version: number;
+  result: string;
+  followUpRequired: boolean;
+  followUpNote?: string;
+}
+
+/** api-spec.md §2.4 — only from Planned. */
+export async function completeActionTaken(
+  ticketId: number,
+  actionId: number,
+  input: CompleteActionInput,
+): Promise<ActionTaken> {
+  const { res, body } = await actionFetch(`/api/tickets/${ticketId}/actions/${actionId}/complete`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throwActionError(res, body, "Could not complete the action. Please try again.");
+  return actionFromBody(body);
+}
+
+export interface CancelActionInput {
+  version: number;
+  reason: string;
+}
+
+/** api-spec.md §2.5 — from Planned or Completed. */
+export async function cancelActionTaken(
+  ticketId: number,
+  actionId: number,
+  input: CancelActionInput,
+): Promise<ActionTaken> {
+  const { res, body } = await actionFetch(`/api/tickets/${ticketId}/actions/${actionId}/cancel`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throwActionError(res, body, "Could not cancel the action. Please try again.");
+  return actionFromBody(body);
+}
+
+// ---------------------------------------------------------------------------
+// Ticket Workflow (Lab 4 api-spec.md §3)
+// ---------------------------------------------------------------------------
+
+export type GateCheckId =
+  | "HAS_OWNER"
+  | "HAS_COMPLETED_ACTION"
+  | "NO_PLANNED_ACTIONS"
+  | "FOLLOW_UPS_ACKNOWLEDGED";
+
+export interface WorkflowGateCheck {
+  id: GateCheckId;
+  passed: boolean;
+  requiresAcknowledgement?: boolean;
+}
+
+export interface WorkflowGate {
+  passed: boolean;
+  checks: WorkflowGateCheck[];
+}
+
+export interface WorkflowTransition {
+  to: TicketStatus;
+  requiresReason: boolean;
+  /** Present only for a target that runs the resolution gate (currently just Resolved). */
+  gate?: WorkflowGate;
+}
+
+export interface TransitionsResponse {
+  currentStatus: TicketStatus;
+  version: number;
+  transitions: WorkflowTransition[];
+  requesterCanIndicateResolved: boolean;
+}
+
+/** api-spec.md §1.2 — the ticket fields a workflow response refreshes. */
+export interface TicketWorkflowSummary {
+  id: number;
+  ticketNumber: string;
+  currentStatus: TicketStatus;
+  version: number;
+  ticketOwner: { id: number; name: string; role: string } | null;
+  resolutionSummary: string | null;
+  resolvedAt: string | null;
+  closedAt: string | null;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  requesterResolvedIndicatedAt: string | null;
+  updatedAt: string;
+}
+
+export interface StatusHistoryEntry {
+  id: number;
+  fromStatus: TicketStatus | null;
+  toStatus: TicketStatus;
+  actor: { id: number; name: string; role: string };
+  reason: string | null;
+  createdAt: string;
+}
+
+/** api-spec.md §3.2 — a 409 STALE_UPDATE reply carries the current ticket as a sibling of `error`. */
+export class StaleStatusError extends ApiError {
+  readonly current: TicketWorkflowSummary;
+  constructor(message: string, options: { status: number; current: TicketWorkflowSummary }) {
+    super(message, { status: options.status, code: "STALE_UPDATE" });
+    this.current = options.current;
+  }
+}
+
+/** api-spec.md §3.2 — a 422 RESOLUTION_GATE_FAILED reply lists the failing conditions. */
+export class ResolutionGateError extends ApiError {
+  readonly details: Array<{ check: string; message: string }>;
+  constructor(
+    message: string,
+    options: { status: number; details: Array<{ check: string; message: string }> },
+  ) {
+    super(message, { status: options.status, code: "RESOLUTION_GATE_FAILED" });
+    this.details = options.details;
+  }
+}
+
+async function workflowFetch(path: string, init: RequestInit): Promise<{ res: Response; body: unknown }> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      ...init,
+      credentials: "include",
+      headers: init.body
+        ? { "Content-Type": "application/json", ...init.headers }
+        : init.headers,
+    });
+  } catch {
+    throw new ApiError("Could not reach the server. Please try again.", {
+      status: 0,
+      code: "NETWORK_ERROR",
+    });
+  }
+  return { res, body: await readJson(res) };
+}
+
+/** api-spec.md §3.1 — the permitted transitions for the caller, from the current status. */
+export async function fetchTransitions(ticketId: number): Promise<TransitionsResponse> {
+  const { res, body } = await workflowFetch(`/api/tickets/${ticketId}/transitions`, { method: "GET" });
+  if (!res.ok) {
+    notifyIfSessionExpired(res.status);
+    throw toApiError(res, body, "Could not load the available transitions. Please try again.");
+  }
+  const parsed = body as Partial<TransitionsResponse> | null;
+  if (!Array.isArray(parsed?.transitions)) {
+    throw new ApiError("The transitions response was not understood.", {
+      status: res.status,
+      code: "BAD_RESPONSE",
+    });
+  }
+  return {
+    currentStatus: parsed.currentStatus as TicketStatus,
+    version: parsed.version ?? 0,
+    transitions: parsed.transitions,
+    requesterCanIndicateResolved: parsed.requesterCanIndicateResolved ?? false,
+  };
+}
+
+export interface PostStatusInput {
+  version: number;
+  toStatus: TicketStatus;
+  reason?: string;
+  followUpAcknowledged?: boolean;
+}
+
+export interface PostStatusResult {
+  ticket: TicketWorkflowSummary;
+  history: StatusHistoryEntry;
+}
+
+/** api-spec.md §3.2 — one DB transaction: version → matrix → gate → update → history. */
+export async function postTicketStatus(
+  ticketId: number,
+  input: PostStatusInput,
+): Promise<PostStatusResult> {
+  const { res, body } = await workflowFetch(`/api/tickets/${ticketId}/status`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    notifyIfSessionExpired(res.status);
+    const errorBody = body as { error?: { code?: string; message?: string; details?: unknown }; current?: unknown } | null;
+    const code = errorBody?.error?.code;
+    const fallback = "Could not update the status. Please try again.";
+    if (res.status === 409 && code === "STALE_UPDATE" && errorBody?.current) {
+      throw new StaleStatusError(errorBody.error?.message ?? fallback, {
+        status: res.status,
+        current: errorBody.current as TicketWorkflowSummary,
+      });
+    }
+    if (res.status === 422 && code === "RESOLUTION_GATE_FAILED") {
+      throw new ResolutionGateError(errorBody?.error?.message ?? fallback, {
+        status: res.status,
+        details: Array.isArray(errorBody?.error?.details)
+          ? (errorBody.error.details as Array<{ check: string; message: string }>)
+          : [],
+      });
+    }
+    throw toApiError(res, body, fallback);
+  }
+  const parsed = body as Partial<PostStatusResult> | null;
+  if (!parsed?.ticket?.id || !parsed.history) {
+    throw new ApiError("The status response was not understood.", {
+      status: res.status,
+      code: "BAD_RESPONSE",
+    });
+  }
+  return { ticket: parsed.ticket, history: parsed.history };
+}
+
+export interface RequesterResolutionResult {
+  ticketId: number;
+  currentStatus: TicketStatus;
+  requesterResolvedIndicatedAt: string;
+}
+
+/** api-spec.md §3.3 — advisory only; never changes status. Idempotent. */
+export async function postRequesterResolution(ticketId: number): Promise<RequesterResolutionResult> {
+  const { res, body } = await workflowFetch(`/api/tickets/${ticketId}/requester-resolution`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+  if (!res.ok) {
+    notifyIfSessionExpired(res.status);
+    throw toApiError(res, body, "Could not record the indication. Please try again.");
+  }
+  const parsed = body as Partial<RequesterResolutionResult> | null;
+  if (!parsed?.requesterResolvedIndicatedAt) {
+    throw new ApiError("The response was not understood.", { status: res.status, code: "BAD_RESPONSE" });
+  }
+  return {
+    ticketId: parsed.ticketId ?? ticketId,
+    currentStatus: parsed.currentStatus as TicketStatus,
+    requesterResolvedIndicatedAt: parsed.requesterResolvedIndicatedAt,
+  };
+}
+
+/** api-spec.md §3.4 — read-only, oldest first. No write/edit endpoint exists. */
+export async function fetchStatusHistory(ticketId: number): Promise<StatusHistoryEntry[]> {
+  const { res, body } = await workflowFetch(`/api/tickets/${ticketId}/status-history`, { method: "GET" });
+  if (!res.ok) {
+    notifyIfSessionExpired(res.status);
+    throw toApiError(res, body, "Could not load the status history. Please try again.");
+  }
+  const parsed = body as { items?: StatusHistoryEntry[] } | null;
+  if (!Array.isArray(parsed?.items)) {
+    throw new ApiError("The status history response was not understood.", {
+      status: res.status,
+      code: "BAD_RESPONSE",
+    });
+  }
+  return parsed.items;
+}
+
+// ---------------------------------------------------------------------------
+// Dashboards (Lab 4 api-spec.md §4) — IT Staff / Administrator only.
+// ---------------------------------------------------------------------------
+
+export interface DashboardMetric {
+  key: string;
+  label: string;
+  value: number;
+  drillDown: string;
+}
+
+export interface DashboardByPriority {
+  priority: ItPriority;
+  value: number;
+  drillDown: string;
+}
+
+export interface DashboardTicketSummary {
+  id: number;
+  ticketNumber: string;
+  summary: string;
+  currentStatus: string;
+  itPriority: ItPriority;
+  ticketOwner: QueueOwner | null;
+  updatedAt: string;
+  createdAt: string;
+}
+
+export interface StaffDashboardData {
+  generatedAt: string;
+  timeZone: string;
+  metrics: DashboardMetric[];
+  secondary: DashboardMetric[];
+  byPriority: DashboardByPriority[];
+  urgentTickets: DashboardTicketSummary[];
+  recentTickets: DashboardTicketSummary[];
+  todayDelta?: number;
+}
+
+/** api-spec.md §4.3 — same shape as staff, plus a user-account counts block. */
+export interface AdminDashboardData extends StaffDashboardData {
+  users: { active: Record<AdminRole, number>; inactive: number };
+}
+
+/** api-spec.md §4.1 — Requester only. */
+export interface RequesterDashboardData {
+  generatedAt: string;
+  timeZone: string;
+  metrics: DashboardMetric[];
+  /** Waiting for Requester or Resolved tickets, capped at 5. */
+  needsAttention: DashboardTicketSummary[];
+  recentTickets: DashboardTicketSummary[];
+}
+
+async function dashboardFetch<T>(path: string): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, { credentials: "include" });
+  } catch {
+    throw new ApiError("Could not reach the server. Please try again.", {
+      status: 0,
+      code: "NETWORK_ERROR",
+    });
+  }
+  const body = await readJson(res);
+  if (!res.ok) {
+    notifyIfSessionExpired(res.status);
+    throw toApiError(res, body, "Could not load the dashboard. Please try again.");
+  }
+  return body as T;
+}
+
+/** api-spec.md §4.1 — Requester only. */
+export function fetchRequesterDashboard(): Promise<RequesterDashboardData> {
+  return dashboardFetch<RequesterDashboardData>("/api/dashboard/requester");
+}
+
+/** api-spec.md §4.2 — IT Staff, Administrator. */
+export function fetchStaffDashboard(): Promise<StaffDashboardData> {
+  return dashboardFetch<StaffDashboardData>("/api/dashboard/staff");
+}
+
+/** api-spec.md §4.3 — Administrator only. */
+export function fetchAdminDashboard(): Promise<AdminDashboardData> {
+  return dashboardFetch<AdminDashboardData>("/api/dashboard/admin");
+}
+
+// ---------------------------------------------------------------------------
 // Administrator User Management (Lab 3 api-spec.md §14)
 // ---------------------------------------------------------------------------
 
@@ -985,6 +1498,8 @@ export interface AdminUser {
 export interface AdminUserListParams {
   search?: string;
   role?: AdminRole | "";
+  /** api-spec.md §4.4 — dashboard drill-down. */
+  active?: "true" | "false" | "";
 }
 
 export interface AdminUserListResponse {

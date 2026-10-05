@@ -75,3 +75,13 @@ export function validateTicketForm(
 export function priorityLabel(priority: RequestedPriority): string {
   return priority.charAt(0) + priority.slice(1).toLowerCase();
 }
+
+/**
+ * ui-spec.md §1.1 — priority badges must not rely on color alone: High gets a
+ * single "▲" and Urgent a doubled "▲▲", Low/Medium carry no icon.
+ */
+export function priorityIcon(priority: string): string {
+  if (priority === "URGENT") return "▲▲ ";
+  if (priority === "HIGH") return "▲ ";
+  return "";
+}

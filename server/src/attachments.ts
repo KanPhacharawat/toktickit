@@ -102,6 +102,15 @@ attachmentsRouter.get(
         createdAt: ticket.createdAt,
         updatedAt: ticket.updatedAt,
         attachments: ticket.attachments.map(toAttachmentMetadata),
+        // Lab 4 api-spec.md §7 point 3 — needed by the Ticket Workflow panel
+        // (status badge, resolve/cancel/reopen summaries, history context).
+        version: ticket.version,
+        resolutionSummary: ticket.resolutionSummary,
+        resolvedAt: ticket.resolvedAt,
+        closedAt: ticket.closedAt,
+        cancelledAt: ticket.cancelledAt,
+        cancelReason: ticket.cancelReason,
+        requesterResolvedIndicatedAt: ticket.requesterResolvedIndicatedAt,
       };
 
       if (req.auth!.user.role === "Requester") {

@@ -45,6 +45,14 @@ enum ItPriority {
   URGENT
 }
 
+/// Lab 4 specification.md §7.1 — an Action Taken's own lifecycle, separate
+/// from the Ticket's status. Cancelled is terminal (BR-11).
+enum ActionStatus {
+  Planned
+  Completed
+  Cancelled
+}
+
 // ---------------------------------------------------------------------------
 // Reference data
 // ---------------------------------------------------------------------------
@@ -127,6 +135,14 @@ model User {
   publicComments PublicComment[]
   internalNotes  InternalNote[]
 
+  /// Lab 4 — Actions Taken performed by, created by, and last edited by this
+  /// user (BR-02, BR-04).
+  actionsPerformed ActionTaken[] @relation("ActionPerformedBy")
+  actionsCreated   ActionTaken[] @relation("ActionCreatedBy")
+  actionsUpdated   ActionTaken[] @relation("ActionUpdatedBy")
+  /// Lab 4 — Ticket status changes this user made (BR-24).
+  statusChanges    TicketStatusHistory[]
+
   @@index([isActive])
   @@index([deletedAt])
   @@index([role, isActive])
@@ -187,6 +203,23 @@ model Ticket {
   /// resolved; cleared when the Ticket moves to Reopened.
   problemAppearsResolvedAt DateTime?
 
+  /// Lab 4 §7.1 / DD-02 — optimistic concurrency for status changes and
+  /// owner/priority edits; `UPDATE ... WHERE id = ? AND version = ?`.
+  version Int @default(1)
+
+  /// Lab 4 §7.1 — required Resolution Summary supplied when the Ticket moves
+  /// to Resolved (BR-20).
+  resolutionSummary String? @db.VarChar(2000)
+  resolvedAt        DateTime?
+  closedAt          DateTime?
+  cancelledAt       DateTime?
+  /// Lab 4 §7.1 — required when the Ticket is Cancelled (BR-23).
+  cancelReason      String? @db.VarChar(500)
+  /// Lab 4 §7.1 / BR-21 — the Requester's advisory "appears resolved"
+  /// indication; distinct from the Lab 3 `problemAppearsResolvedAt` signal in
+  /// that it is cleared by BR-22 rather than by Reopened alone.
+  requesterResolvedIndicatedAt DateTime?
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @default(now()) @updatedAt
   deletedAt DateTime?
@@ -200,6 +233,8 @@ model Ticket {
   attachments     Attachment[]
   publicComments  PublicComment[]
   internalNotes   InternalNote[]
+  actionsTaken    ActionTaken[]
+  statusHistory   TicketStatusHistory[]
 
   // BR-08 — ownership lookups.
   @@index([requesterId])
@@ -217,8 +252,102 @@ model Ticket {
   // Lab 3 §7.4 — queue and ownership lookups.
   @@index([ticketOwnerId])
   @@index([itPriority])
+  // Lab 4 §7.1 — dashboard metric queries (BR-26..BR-44).
+  @@index([requesterId, currentStatus, updatedAt])
+  @@index([itPriority, currentStatus])
   @@index([currentStatus, ticketDate])
   @@index([ticketOwnerId, currentStatus])
+}
+
+// ---------------------------------------------------------------------------
+// Actions Taken and Ticket Workflow (Lab 4)
+// ---------------------------------------------------------------------------
+
+/// Lab 4 specification.md §7.1 / DD-01 — the real work performed on a
+/// Ticket, kept in its own table (not JSON on Ticket) so it can be
+/// authorized, validated, ordered, versioned, and indexed for dashboard
+/// queries independently of the Ticket.
+model ActionTaken {
+  id       Int    @id @default(autoincrement())
+  ticketId Int
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+
+  /// BR-06 — required; bounded relative to now and the Ticket's createdAt.
+  actionAt DateTime
+
+  /// BR-07 — 1–2000 characters after trim.
+  description String @db.VarChar(2000)
+
+  /// BR-08 — optional while Planned, required when Completed.
+  result String? @db.VarChar(2000)
+
+  status ActionStatus @default(Planned)
+
+  /// BR-02, BR-05 — may differ from the Ticket Owner; must be an active
+  /// ITStaff/Administrator.
+  performedById Int
+  performedBy   User @relation("ActionPerformedBy", fields: [performedById], references: [id], onDelete: Restrict)
+
+  /// BR-04 — always the authenticated creator; never client-supplied.
+  createdById Int
+  createdBy   User @relation("ActionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  updatedById Int?
+  updatedBy   User? @relation("ActionUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
+
+  /// BR-09 — followUpNote is required when true, null when false.
+  followUpRequired Boolean @default(false)
+  followUpNote     String? @db.VarChar(1000)
+
+  /// BR-10 — free text pointer into Attachments; never a file upload itself.
+  attachmentNotes String? @db.VarChar(500)
+
+  completedAt DateTime?
+  cancelledAt DateTime?
+  /// BR-12 — required when the action is cancelled.
+  cancelReason String? @db.VarChar(500)
+
+  /// BR-15 / DD-04 — idempotency key for create; unique per Ticket so a
+  /// repeated submission returns the original row instead of a duplicate.
+  clientRequestId String?
+
+  /// DD-02 — optimistic concurrency; edit/complete/cancel all require the
+  /// current value and return 409 on a mismatch.
+  version Int @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@unique([ticketId, clientRequestId])
+  // FR-09 — stable list ordering.
+  @@index([ticketId, actionAt, createdAt, id])
+  // BR-40 (staff dashboard "my open follow-ups").
+  @@index([performedById, status, followUpRequired])
+}
+
+/// Lab 4 specification.md §7.1 / DD-03, DD-05 — append-only audit trail of
+/// every Ticket status change. Kept separate from ActionTaken so the
+/// transition history can never be edited or deleted through any endpoint.
+model TicketStatusHistory {
+  id       Int    @id @default(autoincrement())
+  ticketId Int
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+
+  /// Null only for the Lab 4 migration backfill's first row per Ticket.
+  fromStatus TicketStatus?
+  toStatus   TicketStatus
+
+  actorId Int
+  actor   User @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  /// Resolution summary / cancel reason / reopen reason, depending on
+  /// `toStatus`; optional otherwise.
+  reason String? @db.VarChar(2000)
+
+  createdAt DateTime @default(now())
+
+  // FR-15 / AC-23 — read oldest to newest per Ticket.
+  @@index([ticketId, createdAt])
 }
 
 // ---------------------------------------------------------------------------

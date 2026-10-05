@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
@@ -15,7 +16,9 @@ import {
   currentUserId,
   expectLayoutIntact,
   expectNoHorizontalScroll,
+  gotoMyTickets,
   gotoQueue,
+  gotoUserManagement,
   logOut,
   mainNav,
   openSessionAs,
@@ -247,7 +250,7 @@ for (const [viewport, size] of VIEWPORT_LIST) {
     await requester.dispose();
 
     await signIn(page, ACCOUNTS.requesterA.email);
-    await expect(page.getByTestId("ticket-rows")).toBeVisible();
+    await gotoMyTickets(page);
     await expectNoHorizontalScroll(page);
 
     await page.getByLabel(/^search$/i).fill(ticket.ticketNumber);
@@ -289,7 +292,7 @@ for (const [viewport, size] of VIEWPORT_LIST) {
     await admin.dispose();
 
     await signIn(page, ACCOUNTS.admin.email);
-    await expect(page.getByTestId("user-rows")).toBeVisible();
+    await gotoUserManagement(page);
     await expectNoHorizontalScroll(page);
 
     // A very long email wraps inside its cell instead of widening the page.
@@ -399,7 +402,8 @@ for (const [viewport, size] of VIEWPORT_LIST) {
         await expect(page.getByRole("heading", { name: /^change password$/i })).toBeVisible();
         await shot("change-password-voluntary");
         await page.getByRole("button", { name: /^cancel$/i }).click();
-        await expect(page.getByRole("heading", { name: /^my tickets$/i })).toBeVisible();
+        // Lab 4 — Cancel returns to the Dashboard, this account's landing view.
+        await expect(page.getByRole("heading", { level: 1 })).toContainText(/welcome/i);
         await logOut(page);
       } else {
         await page.getByRole("button", { name: /^log out$/i }).click();
@@ -436,7 +440,7 @@ for (const [viewport, size] of VIEWPORT_LIST) {
     await staff.dispose();
 
     await signIn(page, ACCOUNTS.requesterA.email);
-    await expect(page.getByTestId("ticket-rows")).toBeVisible();
+    await gotoMyTickets(page);
     await expect(page.getByLabel(/development requester/i)).toHaveCount(0);
     await page.getByLabel(/^search$/i).fill(ticket.ticketNumber);
     await page.getByRole("button", { name: /^search$/i }).click();
@@ -502,7 +506,7 @@ for (const [viewport, size] of VIEWPORT_LIST) {
 
     await page.getByLabel(/^sort by$/i).selectOption("itPriority");
     await page.getByLabel(/^order$/i).selectOption("desc");
-    await expect(page.getByTestId("queue-rows").getByRole("row").first()).toContainText("IT: Urgent");
+    await expect(page.getByTestId("queue-rows").getByRole("row").first()).toContainText(/IT:\s*.*Urgent/);
     await shot("sorted-it-priority");
     await page.getByRole("button", { name: /^hide filters/i }).click();
 
@@ -586,19 +590,43 @@ for (const [viewport, size] of VIEWPORT_LIST) {
     await shot("owned");
 
     // Status confirmation dialog.
-    const status = page.getByLabel("Change status to", { exact: true });
-    const update = operations(page).getByRole("button", { name: /^update status$/i });
+    const workflow = page.getByTestId("ticket-workflow");
+    const status = workflow.getByLabel("Change status to", { exact: true });
+    const update = workflow.getByRole("button", { name: /^update status$/i });
     await status.selectOption({ label: "Open" });
     await update.click();
+    await workflow.getByRole("dialog", { name: /^change status to open$/i }).getByRole("button", { name: /^update status$/i }).click();
     await expect(page.getByTestId("detail-status")).toHaveText("Open");
     await status.selectOption({ label: "In Progress" });
     await update.click();
+    await workflow.getByRole("dialog", { name: /^change status to in progress$/i }).getByRole("button", { name: /^update status$/i }).click();
     await expect(page.getByTestId("detail-status")).toHaveText("In Progress");
+
+    // Resolving needs a completed action (BR-20); added directly via the API,
+    // so the open page is reloaded to pick up the fresh gate data.
+    const staffApi = await apiSession(ACCOUNTS.staff1.email);
+    const actionRes = await staffApi.post(`/api/tickets/${ticket.id}/actions`, {
+      data: {
+        clientRequestId: randomUUID(),
+        actionAt: new Date(Date.now() + 60_000).toISOString(),
+        description: "Diagnosed and applied a fix.",
+        status: "Completed",
+        result: "Issue resolved; verified with the requester.",
+      },
+    });
+    expect(actionRes.status()).toBe(201);
+    await staffApi.dispose();
+    await openTicketFromQueue(page, ticket);
+
     await status.selectOption({ label: "Resolved" });
     await update.click();
-    await expect(page.getByRole("dialog", { name: /confirm resolved/i })).toBeVisible();
+    const resolveDialog = page.getByRole("dialog", { name: /^resolve ticket/i });
+    await expect(resolveDialog).toBeVisible();
+    await resolveDialog
+      .getByLabel(/^resolution summary/i)
+      .fill("Reinstalled the driver and verified the fix with the requester.");
     await shot("confirm-dialog");
-    await page.getByRole("button", { name: /^keep current status$/i }).click();
+    await resolveDialog.getByRole("button", { name: /^cancel$/i }).click();
 
     // Public Comment and Internal Note posted.
     const publicSection = page.getByRole("region", { name: /^public comments$/i });
@@ -656,7 +684,7 @@ for (const [viewport, size] of VIEWPORT_LIST) {
     const myId = await currentUserId(adminApi);
 
     await signIn(page, ACCOUNTS.admin.email);
-    await expect(page.getByTestId("user-rows")).toBeVisible();
+    await gotoUserManagement(page);
     await shot("list");
 
     // Search and role filter.

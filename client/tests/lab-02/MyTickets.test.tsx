@@ -55,18 +55,24 @@ function listResponse(
   };
 }
 
-/** Mocks the Category filter's reference data. */
+/** Mocks the Category filter's reference data and the Dashboard the Requester lands on first. */
 function mockShell() {
   vi.spyOn(api, "fetchCategories").mockResolvedValue(CATEGORIES);
+  vi.spyOn(api, "fetchRequesterDashboard").mockResolvedValue({
+    generatedAt: "2026-10-01T00:00:00.000Z",
+    timeZone: "Asia/Bangkok",
+    metrics: [],
+    needsAttention: [],
+    recentTickets: [],
+  });
 }
 
-/** Signs in as the fixture Requester and lands on My Tickets (the default view). */
+/** Signs in as the fixture Requester, then navigates to My Tickets from the Dashboard. */
 async function openMyTickets(user: ReturnType<typeof userEvent.setup>) {
   renderAsRequester(<Lab2App />);
+  const nav = await screen.findByRole("navigation", { name: /main/i });
+  await user.click(within(nav).getByRole("button", { name: /^my tickets$/i }));
   await screen.findByRole("heading", { name: /my tickets/i });
-  // `user` is accepted for call-site symmetry with the other open helpers,
-  // even though signing in here needs no interaction.
-  void user;
 }
 
 /** The filter panel is collapsed by default; open it before using it. */

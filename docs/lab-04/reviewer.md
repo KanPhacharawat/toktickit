@@ -7,24 +7,25 @@
 
 Repository: https://github.com/KanPhacharawat/toktickit
 
-| PR                                                         | Branch                              | Scope                                                              | Merged into  | Date       | Reviewer verdict |
-| ---------------------------------------------------------- | ----------------------------------- | ------------------------------------------------------------------ | ------------ | ---------- | ---------------- |
-| [#82](https://github.com/KanPhacharawat/toktickit/pull/82) | feature/lab4-spec                   | Lab 4 specification, ui-spec, api-spec                             | lab4-staging | 2026-09-28 | Yes              |
-| [#83](https://github.com/KanPhacharawat/toktickit/pull/83) | feature/lab4-test-plan              | Lab 4 test plan documenting                                        | lab4-staging | 2026-09-28 | Yes              |
-| [#84](https://github.com/KanPhacharawat/toktickit/pull/84) | feature/lab4-db-migration           | Database migration (add required schema, migration, seeding, test) | lab4-staging | 2026-09-28 | Yes              |
-| [#85](https://github.com/KanPhacharawat/toktickit/pull/85) | feature/lab4-actions-taken-api      | API for actions taken                                              | lab4-staging | 2026-09-29 | Yes              |
-| [#86](https://github.com/KanPhacharawat/toktickit/pull/86) | feature/lab4-actions-taken-ui       | UI for actions taken                                               | lab4-staging | 2026-09-29 | Yes              |
-| [#87](https://github.com/KanPhacharawat/toktickit/pull/87) | feature/lab4-ticket-workflow-api    | Ticket workflow api                                                | lab4-staging | 2026-09-29 | Yes              |
-| [#88](https://github.com/KanPhacharawat/toktickit/pull/88) | feature/lab4-ticket-workflow-ui     | Ticket workflow ui                                                 | lab4-staging | 2026-09-29 | Yes              |
-| [#89](https://github.com/KanPhacharawat/toktickit/pull/89) | feature/lab4-dashboard-api          | API for dashboard                                                  | lab4-staging | 2026-09-29 | Yes              |
-| [#90](https://github.com/KanPhacharawat/toktickit/pull/90) | feature/lab4-staff-dashboard-ui     | UI for it staff and admin dashboard                                | lab4-staging | 2026-09-29 | Yes              |
-| [#91](https://github.com/KanPhacharawat/toktickit/pull/91) | feature/lab4-requester-dashboard-ui | UI for requester dashboard                                         | lab4-staging | 2026-09-29 | Yes              |
-| [#92](https://github.com/KanPhacharawat/toktickit/pull/92) | feature/lab4-navigation-shell       | UI finalize for navigation                                         | lab4-staging | 2026-09-29 | Yes              |
-| [#93](https://github.com/KanPhacharawat/toktickit/pull/93) | feature/lab4-e2e-tests              | E2E testing                                                        | lab4-staging | 2026-09-29 | Yes              |
-| [#94](https://github.com/KanPhacharawat/toktickit/pull/94) | feature/lab4-regression-hardening   | Regression test and refine                                         | lab4-staging | 2026-09-29 | Yes              |
-| [#96](https://github.com/KanPhacharawat/toktickit/pull/96) | feature/lab4-a11y-responsive        | Accessibility recheck, responsive test, and visual evidence        | lab4-staging | 2026-09-29 | Yes              |
-| [#97](https://github.com/KanPhacharawat/toktickit/pull/97) | feature/lab4-release                | Release integration                                                | lab4-staging | 2026-09-30 | Yes              |
-| [#98](https://github.com/KanPhacharawat/toktickit/pull/98) | lab4-staging                        | Merging lab4 staging into main                                     | lab4-staging | 2026-09-30 | Yes              |
+| PR                                                           | Branch                              | Scope                                                              | Merged into  | Date       | Reviewer verdict |
+| ------------------------------------------------------------ | ----------------------------------- | ------------------------------------------------------------------ | ------------ | ---------- | ---------------- |
+| [#82](https://github.com/KanPhacharawat/toktickit/pull/82)   | feature/lab4-spec                   | Lab 4 specification, ui-spec, api-spec                             | lab4-staging | 2026-09-28 | Yes              |
+| [#83](https://github.com/KanPhacharawat/toktickit/pull/83)   | feature/lab4-test-plan              | Lab 4 test plan documenting                                        | lab4-staging | 2026-09-28 | Yes              |
+| [#84](https://github.com/KanPhacharawat/toktickit/pull/84)   | feature/lab4-db-migration           | Database migration (add required schema, migration, seeding, test) | lab4-staging | 2026-09-28 | Yes              |
+| [#85](https://github.com/KanPhacharawat/toktickit/pull/85)   | feature/lab4-actions-taken-api      | API for actions taken                                              | lab4-staging | 2026-09-29 | Yes              |
+| [#86](https://github.com/KanPhacharawat/toktickit/pull/86)   | feature/lab4-actions-taken-ui       | UI for actions taken                                               | lab4-staging | 2026-09-29 | Yes              |
+| [#87](https://github.com/KanPhacharawat/toktickit/pull/87)   | feature/lab4-ticket-workflow-api    | Ticket workflow api                                                | lab4-staging | 2026-09-29 | Yes              |
+| [#88](https://github.com/KanPhacharawat/toktickit/pull/88)   | feature/lab4-ticket-workflow-ui     | Ticket workflow ui                                                 | lab4-staging | 2026-09-29 | Yes              |
+| [#89](https://github.com/KanPhacharawat/toktickit/pull/89)   | feature/lab4-dashboard-api          | API for dashboard                                                  | lab4-staging | 2026-09-29 | Yes              |
+| [#90](https://github.com/KanPhacharawat/toktickit/pull/90)   | feature/lab4-staff-dashboard-ui     | UI for it staff and admin dashboard                                | lab4-staging | 2026-09-29 | Yes              |
+| [#91](https://github.com/KanPhacharawat/toktickit/pull/91)   | feature/lab4-requester-dashboard-ui | UI for requester dashboard                                         | lab4-staging | 2026-09-29 | Yes              |
+| [#92](https://github.com/KanPhacharawat/toktickit/pull/92)   | feature/lab4-navigation-shell       | UI finalize for navigation                                         | lab4-staging | 2026-09-29 | Yes              |
+| [#93](https://github.com/KanPhacharawat/toktickit/pull/93)   | feature/lab4-e2e-tests              | E2E testing                                                        | lab4-staging | 2026-09-29 | Yes              |
+| [#94](https://github.com/KanPhacharawat/toktickit/pull/94)   | feature/lab4-regression-hardening   | Regression test and refine                                         | lab4-staging | 2026-09-29 | Yes              |
+| [#96](https://github.com/KanPhacharawat/toktickit/pull/96)   | feature/lab4-a11y-responsive        | Accessibility recheck, responsive test, and visual evidence        | lab4-staging | 2026-09-29 | Yes              |
+| [#97](https://github.com/KanPhacharawat/toktickit/pull/97)   | feature/lab4-release                | Release integration                                                | lab4-staging | 2026-09-30 | Yes              |
+| [#98](https://github.com/KanPhacharawat/toktickit/pull/98)   | lab4-staging                        | Merging lab4 staging into main                                     | lab4-staging | 2026-09-30 | Yes              |
+| [#101](https://github.com/KanPhacharawat/toktickit/pull/101) | lab4-staging                        | Fixing lab4 staging merge into main conflict problem               | lab4-staging | 2026-10-5  | Yes              |
 
 ## Reviewer comments I received
 
@@ -105,11 +106,19 @@ Repository: https://github.com/KanPhacharawat/toktickit
 
 ### PR #98 - Merge lab4-staging into main (lab4-staging → main)
 
-I got a problem in this PR because I wrong press and merge without reviewer approve and I try to revert code back but I think it some kind of git problem because I already revert the main back to before lab4-staging merge in but it doesn't work.
+- **Reviewer:** Lab 4 release look good to me. Approve for merge
+- **Response:** Thank you kub. You can merge now
+
+\_Note: I got a merging problem in this PR so I need to fix it first.
+
+### PR #101 - Remerge lab4-staging into main (lab4-staging → main)
+
+- **Reviewer:** Lab 4 release look good to me. Approve for merge
+- **Response:** Thank you kub. You can merge now
 
 ## Review outcome summary
 
 - Pull requests authored for Lab 4: **15 merged into `lab4-staging`**, plus the
   final review PR and the release PR to `main`.
 - Blocking issues raised by the reviewer: _0_
-- Blocking issues resolved before merge: _2_ (1 fix because of wrong merge feature/lab4-spec into main instead of lab4-staging and wrong click move kanban board so the PR #95 got skip)
+- Blocking issues resolved before merge: _3_ (1 fix because of wrong merge feature/lab4-spec into main instead of lab4-staging and wrong click move kanban board so the PR #95 got skip. And the last blocking issue is from merge lab4 staging into main conflict problem.)

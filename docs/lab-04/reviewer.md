@@ -25,7 +25,8 @@ Repository: https://github.com/KanPhacharawat/toktickit
 | [#96](https://github.com/KanPhacharawat/toktickit/pull/96)   | feature/lab4-a11y-responsive        | Accessibility recheck, responsive test, and visual evidence        | lab4-staging | 2026-09-29 | Yes              |
 | [#97](https://github.com/KanPhacharawat/toktickit/pull/97)   | feature/lab4-release                | Release integration                                                | lab4-staging | 2026-09-30 | Yes              |
 | [#98](https://github.com/KanPhacharawat/toktickit/pull/98)   | lab4-staging                        | Merging lab4 staging into main                                     | lab4-staging | 2026-09-30 | Yes              |
-| [#101](https://github.com/KanPhacharawat/toktickit/pull/101) | lab4-staging                        | Fixing lab4 staging merge into main conflict problem               | lab4-staging | 2026-10-5  | Yes              |
+| [#101](https://github.com/KanPhacharawat/toktickit/pull/101) | feature/lab4-fix-reviewer           | Fixing lab4 reviewer.md document                                   | lab4-staging | 2026-10-5  | Yes              |
+| [#102](https://github.com/KanPhacharawat/toktickit/pull/102) | lab4-staging                        | Remerge lab4-staging into main                                     | main         | 2026-10-5  | Yes              |
 
 ## Reviewer comments I received
 
@@ -111,7 +112,12 @@ Repository: https://github.com/KanPhacharawat/toktickit
 
 \_Note: I got a merging problem in this PR so I need to fix it first.
 
-### PR #101 - Remerge lab4-staging into main (lab4-staging → main)
+### PR #101 - Remerge lab4-staging into main (feature/lab4-fix-reviewer → lab4-staging)
+
+- **Reviewer:** The updated document look fine. Approve for merge
+- **Response:** Thank you kub. You can merge now
+
+### PR #102 - Remerge lab4-staging into main (lab4-staging → main)
 
 - **Reviewer:** Lab 4 release look good to me. Approve for merge
 - **Response:** Thank you kub. You can merge now
